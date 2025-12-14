@@ -1,0 +1,16 @@
+# raabin.yaml
+path: /Users/natbailie/Documents/Blood Cell Identifier Project/Datasets/Raabin-WBC-YOLO
+
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: Neutrophil
+  1: Lymphocyte
+  2: Monocyte
+  3: Eosinophil
+  4: Basophil
+  5: Metamyelocyte
+  6: Myelocyte
+  7: Promyelocyte

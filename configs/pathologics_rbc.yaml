@@ -1,0 +1,6 @@
+train: dataset/images/train
+val: dataset/images/val
+
+nc: 9
+names: ["Rounded RBCs", "Ovalocytes", "Fragmented RBCs", "Two Overlap",
+        "Three Overlap", "Burr Cells", "Teardrops", "Angled Cells", "Borderline Overlap"]

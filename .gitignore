@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+venv/
+.env
+*.pyc
+node_modules/
+dist/
+reports.db
+saved/
+outputs/

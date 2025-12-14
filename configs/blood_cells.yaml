@@ -1,0 +1,11 @@
+# configs/blood_cells.yaml
+path: /Users/natbailie/Documents/Blood Cell Identifier Project/Datasets/TXL-PBC_Dataset-master/TXL-PBC
+
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: WBC
+  1: RBC
+  2: Platelets
