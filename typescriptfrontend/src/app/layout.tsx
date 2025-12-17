@@ -1,21 +1,22 @@
-import "./globals.css";
-import SidebarLayout from "@/components/SidebarLayout";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css"; // <--- THIS LINE IS ESSENTIAL
 
-export const metadata = {
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
     title: "Bentara Pathology",
-    description: "AI-assisted haematology diagnostics",
+    description: "AI-Assisted Haematology",
 };
 
 export default function RootLayout({
                                        children,
-                                   }: {
+                                   }: Readonly<{
     children: React.ReactNode;
-}) {
+}>) {
     return (
         <html lang="en">
-        <body className="bg-gray-100">
-        <SidebarLayout>{children}</SidebarLayout>
-        </body>
+        <body className={inter.className}>{children}</body>
         </html>
     );
 }
