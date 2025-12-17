@@ -1,10 +1,11 @@
-// src/components/PatientCreate.tsx
+"use client";
+
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PatientService } from '../api';
+import { useRouter } from 'next/navigation'; // <--- Changed from react-router-dom
+import { PatientService } from '../lib/api'; // <--- Ensure this points to lib/api
 
 export default function PatientCreate() {
-    const navigate = useNavigate();
+    const router = useRouter(); // <--- Next.js router
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
@@ -14,7 +15,7 @@ export default function PatientCreate() {
         nhs_number: '',
         clinician: '',
         ward: '',
-        sample_date: new Date().toISOString().split('T')[0], // Default to today
+        sample_date: new Date().toISOString().split('T')[0],
         indication: '',
         stain: 'Giemsa',
         zoom: '40x'
@@ -28,9 +29,10 @@ export default function PatientCreate() {
         e.preventDefault();
         setLoading(true);
         try {
+            // Calls the API to create patient
             const res = await PatientService.create(formData);
-            // On success, redirect to the new patient's dashboard
-            navigate(`/patient/${res.data.patient_id}`);
+            // Redirect to the dashboard list on success
+            router.push('/dashboard/patients');
         } catch (error) {
             alert("Error creating patient. Please check the console.");
             console.error(error);
@@ -40,35 +42,38 @@ export default function PatientCreate() {
     };
 
     return (
-        <div className="max-w-2xl mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800">Register New Patient</h2>
+        <div className="max-w-3xl mx-auto bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+                <h2 className="text-xl font-bold text-slate-800">Register New Patient</h2>
+                <p className="text-slate-500 text-sm">Enter demographics and sample details below.</p>
+            </div>
 
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* Full Width Name */}
                 <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                    <input required name="name" onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Full Name</label>
+                    <input required name="name" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. John Doe" />
                 </div>
 
                 {/* IDs */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">MRN (Hospital ID)</label>
-                    <input name="mrn" onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">MRN (Hospital ID)</label>
+                    <input name="mrn" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">NHS Number</label>
-                    <input name="nhs_number" onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">NHS Number</label>
+                    <input name="nhs_number" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
 
                 {/* Demographics */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Date of Birth</label>
-                    <input type="date" name="dob" onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Date of Birth</label>
+                    <input type="date" name="dob" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Sex</label>
-                    <select name="sex" onChange={handleChange} className="mt-1 block w-full p-2 border rounded">
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Sex</label>
+                    <select name="sex" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
                         <option>Male</option>
                         <option>Female</option>
                         <option>Other</option>
@@ -77,26 +82,26 @@ export default function PatientCreate() {
 
                 {/* Clinical Info */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Clinician</label>
-                    <input name="clinician" onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Clinician</label>
+                    <input name="clinician" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Ward / Location</label>
-                    <input name="ward" onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Ward / Location</label>
+                    <input name="ward" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
 
                 {/* Sample Details */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Stain Type</label>
-                    <select name="stain" onChange={handleChange} className="mt-1 block w-full p-2 border rounded">
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Stain Type</label>
+                    <select name="stain" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
                         <option>Giemsa</option>
                         <option>Wright-Giemsa</option>
                         <option>H&E</option>
                     </select>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">Zoom Level</label>
-                    <select name="zoom" onChange={handleChange} className="mt-1 block w-full p-2 border rounded">
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Zoom Level</label>
+                    <select name="zoom" onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
                         <option>40x</option>
                         <option>100x</option>
                         <option>10x</option>
@@ -104,21 +109,21 @@ export default function PatientCreate() {
                 </div>
 
                 <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700">Sample Date</label>
-                    <input type="date" name="sample_date" value={formData.sample_date} onChange={handleChange} className="mt-1 block w-full p-2 border rounded" />
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Sample Date</label>
+                    <input type="date" name="sample_date" value={formData.sample_date} onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
 
                 <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700">Indication / Notes</label>
-                    <textarea name="indication" rows={3} onChange={handleChange} className="mt-1 block w-full p-2 border rounded"></textarea>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Indication / Notes</label>
+                    <textarea name="indication" rows={3} onChange={handleChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
                 </div>
 
                 {/* Submit Button */}
-                <div className="md:col-span-2">
+                <div className="md:col-span-2 pt-4">
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-bold transition-colors"
+                        className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 font-bold transition-colors shadow-md"
                     >
                         {loading ? 'Registering...' : 'Create Patient Record'}
                     </button>
