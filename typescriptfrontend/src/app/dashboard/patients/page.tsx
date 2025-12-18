@@ -1,4 +1,3 @@
-// src/app/dashboard/patients/page.tsx
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -118,9 +117,10 @@ export default function PatientDirectory() {
                                     {patient.ward || '-'}
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    {/* Note: This links to the detail page. You will need to create src/app/patients/[id]/page.tsx later */}
+                                    {/* --- FIX IS HERE --- */}
+                                    {/* Changed from /patients/${patient.id} to /dashboard/patients/${patient.id} */}
                                     <Link
-                                        href={`/patients/${patient.id}`}
+                                        href={`/dashboard/patients/${patient.id}`}
                                         className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
                                     >
                                         View Chart <FileText size={16} />
