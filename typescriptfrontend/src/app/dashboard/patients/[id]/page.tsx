@@ -2,240 +2,178 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
-  User, ArrowLeft, FileText, Activity, Microscope, Clock,
-  Download, ImageIcon, ExternalLink, CheckCircle, ShieldAlert,
-  BadgeCheck, UserCheck
+  ArrowLeft,
+  Calendar,
+  Hash, // Used for NHS Number
+  FileText,
+  Microscope,
+  Clock,
+  CheckCircle,
+  FileBadge
 } from 'lucide-react';
-import { PatientService, getFileUrl } from '../../../../lib/api';
 
-interface Patient {
-  id: number;
-  name: string;
-  mrn: string;
-  dob: string;
-  sex: string;
-  clinician: string;
-  ward: string;
-  indication: string;
-}
-
-interface Report {
-  id: number;
-  date: string;
-  diagnosis: string;
-  confidence: string;
-  annotated_image: string;
-  pdf_report: string;
-  // NEW FIELDS
-  status?: string;
-  reviewer?: string;
-  signed_off_date?: string;
-}
-
-export default function PatientChartPage() {
+export default function PatientDetailsPage() {
   const params = useParams();
   const router = useRouter();
-
-  const id = params?.id ? Number(params.id as string) : 0;
-
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [reports, setReports] = useState<Report[]>([]);
+  const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // User State for Permission Checking
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  // Helper to format date
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateString;
+  };
 
   useEffect(() => {
-    // Load User
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) setCurrentUser(JSON.parse(storedUser));
-
-    if (!id) return;
-
-    const fetchData = async () => {
+    const fetchDetails = async () => {
       try {
-        const pRes = await PatientService.getOne(id);
-        setPatient(pRes.data);
-
-        try {
-          const rRes = await PatientService.getReports(id);
-          setReports(rRes.data.reports || []);
-        } catch (e) { console.warn("No reports found"); }
-      } catch (e) {
-        console.error("Failed to load chart", e);
+        const res = await fetch(`http://localhost:8000/patients/${params.id}`);
+        if (!res.ok) throw new Error("Patient not found");
+        const data = await res.json();
+        setPatient(data);
+      } catch (err) {
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [id]);
+    if (params.id) fetchDetails();
+  }, [params.id]);
 
-  const handleSignOff = async (reportId: number) => {
-    if (!currentUser) return;
-    const confirm = window.confirm(`Sign off report #${reportId} as ${currentUser.name}? This action cannot be undone.`);
-    if (!confirm) return;
-
-    try {
-      await PatientService.signOff(reportId, currentUser.name);
-      // Refresh local state
-      setReports(prev => prev.map(r =>
-          r.id === reportId ? { ...r, status: "Authorized", reviewer: currentUser.name, signed_off_date: new Date().toISOString().split('T')[0] } : r
-      ));
-    } catch (e) {
-      alert("Failed to sign off report. Check connection.");
-    }
-  };
-
-  if (loading) {
-    return (
-        <div className="flex items-center justify-center min-h-[50vh] text-slate-400">
-          <div className="flex flex-col items-center gap-2">
-            <Microscope className="animate-bounce text-blue-500" />
-            <span>Loading Medical Record...</span>
-          </div>
-        </div>
-    );
-  }
-
-  if (!patient) {
-    return <div className="text-center p-10">Patient not found.</div>;
-  }
+  if (loading) return <div className="p-10 text-slate-400">Loading patient record...</div>;
+  if (!patient) return <div className="p-10 text-red-400">Patient not found.</div>;
 
   return (
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-        {/* HEADER */}
-        <div className="flex items-center gap-4">
-          <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
-            <ArrowLeft size={24} />
-          </button>
+        {/* TOP NAV */}
+        <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold text-sm mb-4">
+          <ArrowLeft size={16} /> Back to Directory
+        </button>
+
+        {/* HEADER CARD */}
+        <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row gap-8 justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{patient.name}</h1>
-            <p className="text-slate-500 flex items-center gap-2">
-              <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-700 font-bold">MRN: {patient.mrn}</span>
-              <span className="text-xs">•</span>
-              <span className="text-xs font-medium">{patient.sex}</span>
-              <span className="text-xs">•</span>
-              <span className="text-xs">DOB: {patient.dob}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
-            <div className="bg-blue-50 p-3 rounded-lg text-blue-600"><User size={24} /></div>
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase">Current Location</p>
-              <p className="font-bold text-slate-800 text-lg">{patient.ward || "Outpatient"}</p>
-              <p className="text-xs text-slate-500 mt-1">Clinician: {patient.clinician || "Not Assigned"}</p>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl font-bold text-slate-900">{patient.name}</h1>
+              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                  patient.gender === 'Male' ? 'bg-blue-50 text-blue-600' : 'bg-pink-50 text-pink-600'
+              }`}>{patient.gender}</span>
             </div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4 md:col-span-2">
-            <div className="bg-purple-50 p-3 rounded-lg text-purple-600"><Activity size={24} /></div>
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase">Clinical Indication</p>
-              <p className="text-slate-700 mt-1">{patient.indication || "No clinical notes provided."}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* REPORTS LIST */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-              <Microscope className="text-blue-600" size={18} />
-              Pathology Reports
-            </h3>
-            <span className="text-xs font-bold bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-500">
-            {reports.length} Records
-          </span>
+            <p className="font-mono text-slate-500 bg-slate-100 inline-block px-2 py-1 rounded text-sm font-bold">MRN: {patient.mrn}</p>
           </div>
 
-          {reports.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">
-                <FileText size={48} className="mx-auto mb-4 opacity-20" />
-                <p>No reports generated yet.</p>
-                <button onClick={() => router.push('/dashboard/upload')} className="mt-4 text-blue-600 font-bold text-sm hover:underline">
-                  Run New Analysis
-                </button>
+          <div className="flex gap-8 text-sm text-slate-600">
+            {/* DATE OF BIRTH */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-slate-400">
+                <Calendar size={20} />
               </div>
-          ) : (
-              <div className="divide-y divide-slate-100">
-                {reports.map((report) => {
-                  const isAuthorized = report.status === "Authorized";
-                  const isConsultant = currentUser?.details?.grade === "Consultant";
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase">Date of Birth</p>
+                <p className="font-medium text-slate-900">{formatDate(patient.dob)}</p>
+              </div>
+            </div>
 
-                  return (
-                      <div key={report.id} className="p-6 hover:bg-slate-50 transition-colors group flex flex-col md:flex-row gap-6 items-start">
+            {/* NHS NUMBER (Replaced Contact) */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
+                <Hash size={20} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase">NHS Number</p>
+                <p className="font-mono font-bold text-slate-900 tracking-wide">{patient.nhs_number || "N/A"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                        {/* Status Badge - Left Side */}
-                        <div className="w-full md:w-32 flex flex-col items-center justify-center h-24 bg-slate-50 rounded-lg border border-slate-100 gap-2">
-                          {isAuthorized ? (
-                              <>
-                                <BadgeCheck className="text-emerald-500" size={32} />
-                                <span className="text-[10px] font-bold text-emerald-700 uppercase">Authorized</span>
-                              </>
-                          ) : (
-                              <>
-                                <ShieldAlert className="text-amber-500" size={32} />
-                                <span className="text-[10px] font-bold text-amber-600 uppercase">Pending</span>
-                              </>
-                          )}
-                        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                        {/* Info */}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs text-slate-400 flex items-center gap-1">
-                                    <Clock size={12} /> {report.date}
-                                </span>
-                            {isAuthorized && (
-                                <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
-                                        • Signed by {report.reviewer}
-                                    </span>
-                            )}
+          {/* LEFT: HISTORY */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm h-full">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <FileText size={16}/> Medical History
+              </h3>
+              <p className="text-slate-600 leading-relaxed whitespace-pre-wrap text-sm">
+                {patient.history || "No medical history notes recorded."}
+              </p>
+            </div>
+          </div>
+
+          {/* RIGHT: REPORTS LIST */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <Microscope size={16}/> Diagnostic Reports
+                </h3>
+                <Link href="/dashboard/upload" className="text-xs font-bold text-blue-600 hover:underline">
+                  + Upload New Slide
+                </Link>
+              </div>
+
+              {patient.reports.length === 0 ? (
+                  <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <p className="text-slate-400 text-sm">No slides uploaded for this patient yet.</p>
+                  </div>
+              ) : (
+                  <div className="space-y-4">
+                    {patient.reports.map((report: any) => (
+                        <div key={report.id} className="flex gap-4 p-4 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all group bg-slate-50/50">
+                          {/* Thumbnail */}
+                          <div className="w-16 h-16 bg-slate-200 rounded-lg overflow-hidden shrink-0">
+                            <img src={`http://localhost:8000${report.image_url}`} className="w-full h-full object-cover" />
                           </div>
-                          <h4 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                            {report.diagnosis}
-                          </h4>
-                          <p className="text-sm text-slate-500 mt-1">AI Confidence Score: <span className="font-mono text-slate-700">{report.confidence}</span></p>
 
-                          {/* CONSULTANT SIGN OFF AREA */}
-                          {!isAuthorized && (
-                              <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center justify-between">
-                                <p className="text-xs text-amber-800 font-medium">Requires Consultant Verification</p>
-                                {isConsultant ? (
-                                    <button
-                                        onClick={() => handleSignOff(report.id)}
-                                        className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-amber-700 flex items-center gap-2 shadow-sm"
-                                    >
-                                      <UserCheck size={14} /> Sign Off Report
-                                    </button>
-                                ) : (
-                                    <span className="text-xs text-slate-400 italic">Waiting for review...</span>
-                                )}
-                              </div>
-                          )}
-                        </div>
+                          {/* Info */}
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <h4 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                                {report.diagnosis}
+                              </h4>
+                              <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 ${
+                                  report.status === 'Authorized' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                              }`}>
+                                            {report.status === 'Authorized' ? <CheckCircle size={10}/> : <Clock size={10}/>}
+                                {report.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Detected with <span className="font-bold text-slate-700">{report.confidence} confidence</span>
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-2">
+                              {report.date} • Assigned to {report.assigned_to || "System"}
+                            </p>
 
-                        {/* ACTIONS: Separate PDF and Image Buttons */}
-                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0">
-                          <a href={getFileUrl(report.annotated_image)} target="_blank" className="w-full sm:w-auto px-4 py-2.5 bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-all flex items-center justify-center gap-2">
-                            <ImageIcon size={16} /> View Slide
-                          </a>
-                          <a href={getFileUrl(report.pdf_report)} target="_blank" className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2">
-                            <FileText size={16} /> Report PDF <ExternalLink size={12} className="opacity-50"/>
-                          </a>
+                            {/* View Full Report Button */}
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <Link
+                                  href={`/dashboard/report/${report.id}`}
+                                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                              >
+                                <FileBadge size={14} /> View Full Report
+                              </Link>
+                            </div>
+
+                          </div>
                         </div>
-                      </div>
-                  );
-                })}
-              </div>
-          )}
+                    ))}
+                  </div>
+              )}
+            </div>
+          </div>
+
         </div>
+
       </div>
   );
 }

@@ -39,4 +39,12 @@ export const DashboardService = {
     getPendingReports: () => api.get('/reports/pending')
 };
 
+// ... existing imports ...
+
+export const SystemService = {
+    getAuditLogs: () => api.get('/system/audit-logs'), // NEW
+};
+
+// ... keep existing UserService, PatientService etc ...
+
 export default api;

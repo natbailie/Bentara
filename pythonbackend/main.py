@@ -1,448 +1,685 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
-from fpdf import FPDF
-from ultralytics import YOLO
+import sqlite3
 import shutil
 import os
-import cv2
+import uuid
 import json
-from datetime import date
-from typing import Optional, List
-
-# --- CONFIGURATION ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "bentara.db")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
-LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
-
-# FOLDERS
-MODELS_DIR = os.path.join(BASE_DIR, "models")
-UPLOAD_DIR = "uploads"
-REPORT_DIR = "reports"
-TRAINING_DIR = "training_data"
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(REPORT_DIR, exist_ok=True)
-os.makedirs(MODELS_DIR, exist_ok=True)
-os.makedirs(TRAINING_DIR, exist_ok=True)
-
-# --- AI LOADER ---
-TARGET_MODELS = [
-    "eosinophil_best.pt", "lymphocyte_best.pt", "monocyte_best.pt",
-    "neutrophil_best.pt", "blood_cell_best.pt"
-]
-loaded_models = []
-print(f"--- Loading AI Models ---")
-for model_name in TARGET_MODELS:
-    path = os.path.join(MODELS_DIR, model_name)
-    if os.path.exists(path):
-        try:
-            loaded_models.append(YOLO(path))
-            print(f"Loaded {model_name}")
-        except:
-            pass
-
-# --- DATABASE ---
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-
-# --- TABLES ---
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    password = Column(String)
-    full_name = Column(String)
-    gmc_number = Column(String, nullable=True)
-    grade = Column(String, nullable=True)
-    trust = Column(String, nullable=True)
-    theme_pref = Column(String, default="default")
-
-
-class Patient(Base):
-    __tablename__ = "patients"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    mrn = Column(String, unique=True, index=True)
-    nhs_number = Column(String, nullable=True)
-    dob = Column(String)
-    sex = Column(String)
-    clinician = Column(String, nullable=True)
-    ward = Column(String, nullable=True)
-    indication = Column(Text, nullable=True)
-    reports = relationship("Report", back_populates="patient")
-
-
-class Report(Base):
-    __tablename__ = "reports"
-    id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"))
-    date = Column(String)
-    diagnosis = Column(String)
-    confidence = Column(String)
-    annotated_image = Column(String)
-    pdf_report = Column(String)
-    status = Column(String, default="Pending Review")
-    reviewer = Column(String, nullable=True)
-    signed_off_date = Column(String, nullable=True)
-    # NEW: Assignment Field
-    assigned_to = Column(String, nullable=True)  # Username of consultant
-
-    patient = relationship("Patient", back_populates="reports")
-
-
-class TrainingData(Base):
-    __tablename__ = "training_data"
-    id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String)
-    original_path = Column(String)
-    upload_date = Column(String)
-    uploader = Column(String)
-    annotations = Column(Text, default="[]")
-    status = Column(String, default="Unlabeled")
-
+from datetime import datetime
+from typing import Optional
+from ultralytics import YOLO
+from PIL import Image  # Added for JPEG conversion
+from collections import Counter
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"],
-                   allow_headers=["*"])
+
+# --- CONFIGURATION ---
+UPLOAD_DIR = "uploads"
+DATASET_DIR = "dataset"  # New folder for training-ready files
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(os.path.join(DATASET_DIR, "images"), exist_ok=True)
+os.makedirs(os.path.join(DATASET_DIR, "labels"), exist_ok=True)
+DB_NAME = "bentara.db"
+
+# --- YOLO CLASS MAPPING (For Dataset Generation) ---
+# This ensures "Neutrophil" becomes Class ID 0, etc. based on standard ML mapping
+CLASS_MAP = {
+    "Neutrophil": 0,
+    "Lymphocyte": 1,
+    "Monocyte": 2,
+    "Eosinophil": 3,
+    "Basophil": 4,
+    "Blast Cell": 5,
+    "RBC": 6,
+    "Platelet": 7
+}
+
+# --- LOAD MULTIPLE YOLO MODELS ---
+MODEL_FILES = [
+    "eosinophil_best.pt",
+    "lymphocyte_best.pt",
+    "monocyte_best.pt",
+    "neutrophil_best.pt",
+    "blood_cell_best.pt"
+]
+
+loaded_models = []
+
+print("--- LOADING AI MODELS ---")
+for model_file in MODEL_FILES:
+    path = os.path.join("models", model_file)
+    if os.path.exists(path):
+        print(f"✅ Loading: {model_file}")
+        try:
+            loaded_models.append(YOLO(path))
+        except Exception as e:
+            print(f"❌ Failed to load {model_file}: {e}")
+    else:
+        print(f"⚠️ Warning: {model_file} not found in 'models' folder.")
+
+if not loaded_models:
+    print("⚠️ No custom models found. Loading generic 'yolov8n.pt' fallback.")
+    loaded_models.append(YOLO("yolov8n.pt"))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-@app.on_event("startup")
-def startup():
-    Base.metadata.create_all(bind=engine)
+# --- DATABASE SETUP ---
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    # 1. Users
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT,
+            password TEXT NOT NULL,
+            full_name TEXT,
+            role TEXT,
+            license_id TEXT
+        )
+    ''')
+
+    # 2. Patients
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS patients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            mrn TEXT UNIQUE NOT NULL,
+            nhs_number TEXT NOT NULL,
+            dob TEXT NOT NULL,
+            gender TEXT NOT NULL,
+            history TEXT
+        )
+    ''')
+
+    # 3. Reports
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER,
+            date TEXT,
+            image_url TEXT,
+            diagnosis TEXT,
+            confidence TEXT,
+            status TEXT DEFAULT 'Pending',
+            assigned_to TEXT, 
+            sample_type TEXT,
+            sample_date TEXT,
+            notes TEXT,
+            detections TEXT,
+            FOREIGN KEY(patient_id) REFERENCES patients(id)
+        )
+    ''')
+
+    # 4. Audit Logs
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id INTEGER,
+            action TEXT,
+            performed_by TEXT,
+            timestamp TEXT,
+            details TEXT
+        )
+    ''')
+
+    # 5. Research Samples
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS research_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contributor_id INTEGER,
+            sample_type TEXT,
+            image_url TEXT,
+            annotations TEXT,
+            notes TEXT,
+            date TEXT,
+            status TEXT DEFAULT 'Unverified'
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+init_db()
 
 
-# --- SCHEMAS ---
-class UserCreate(BaseModel):
+# --- MODELS ---
+class RegisterRequest(BaseModel):
     username: str
     password: str
     full_name: str
-    gmc_number: Optional[str] = None
-    grade: Optional[str] = None
-    trust: Optional[str] = None
+    email: str
+    role: str
+    license_id: Optional[str] = None
 
 
-class UserUpdate(BaseModel):
+class PatientRequest(BaseModel):
+    name: str
+    mrn: str
+    nhs_number: str
+    dob: str
+    gender: str
+    history: str = ""
+
+
+class UpdateProfileRequest(BaseModel):
     full_name: str
-    gmc_number: str
-    grade: str
-    trust: str
-    theme_pref: str
+    email: str
+    role: str
+    license_id: str
 
 
-class AnnotationUpdate(BaseModel):
-    annotations: str
-    status: str
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
-class SignOffRequest(BaseModel):
-    reviewer: str
+# --- DEPENDENCIES ---
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, full_name, email, role, license_id, id FROM users WHERE username = ?", (token,))
+    user = cursor.fetchone()
+    conn.close()
 
-
-# --- DASHBOARD & STATS ROUTES ---
-@app.get("/dashboard/stats")
-def get_dashboard_stats(db: Session = Depends(get_db)):
-    total_patients = db.query(Patient).count()
-    pending_count = db.query(Report).filter(Report.status == "Pending Review").count()
-    critical_count = db.query(Report).filter(Report.diagnosis.contains("Acute")).count()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid auth")
 
     return {
-        "total_patients": total_patients,
-        "pending_reports": pending_count,
-        "critical_alerts": critical_count
+        "username": user[0],
+        "full_name": user[1],
+        "email": user[2],
+        "role": user[3],
+        "license_id": user[4],
+        "id": user[5]
+    }
+
+
+# --- HELPER: YOLO COORDINATE CONVERSION ---
+def save_yolo_label(base_filename, annotations_json):
+    label_path = os.path.join(DATASET_DIR, "labels", f"{base_filename}.txt")
+    try:
+        parsed = json.loads(annotations_json)
+        # Handle both old list format and new nested dictionary format
+        cells = parsed.get("cells", []) if isinstance(parsed, dict) else parsed
+
+        with open(label_path, "w") as f:
+            for cell in cells:
+                # Extract primary name (e.g. "Neutrophil" from "Neutrophil: Segmented")
+                label_name = cell["label"].split(":")[0].strip()
+                class_id = CLASS_MAP.get(label_name, 0)
+
+                # YOLO wants: center_x center_y width height (0-1 range)
+                # Frontend sends: top-left_x top-left_y width height (0-100 range)
+                w = cell["w"] / 100
+                h = cell["h"] / 100
+                x_center = (cell["x"] / 100) + (w / 2)
+                y_center = (cell["y"] / 100) + (h / 2)
+
+                f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}\n")
+    except Exception as e:
+        print(f"❌ Failed to generate YOLO label: {e}")
+
+
+# --- ENDPOINTS ---
+
+@app.post("/register")
+def register_user(user: RegisterRequest):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, password, full_name, email, role, license_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (user.username, user.password, user.full_name, user.email, user.role, user.license_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Username already exists")
+    conn.close()
+    return {"message": "User registered", "username": user.username}
+
+
+@app.post("/token")
+def login(username: str = Form(...), password: str = Form(...)):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?",
+                   (username, username, password))
+    user = cursor.fetchone()
+    conn.close()
+
+    if user:
+        return {"access_token": user[1], "token_type": "bearer",
+                "user": {"username": user[1], "full_name": user[4], "role": user[5]}}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+
+
+@app.get("/users/me")
+def read_users_me(current_user: dict = Depends(get_current_user)):
+    return current_user
+
+
+@app.put("/users/update")
+def update_user_profile(profile: UpdateProfileRequest, current_user: dict = Depends(get_current_user)):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE users 
+        SET full_name = ?, email = ?, role = ?, license_id = ?
+        WHERE username = ?
+    """, (profile.full_name, profile.email, profile.role, profile.license_id, current_user['username']))
+
+    conn.commit()
+    conn.close()
+    return {"message": "Profile updated successfully"}
+
+
+@app.post("/users/change-password")
+def change_password(payload: ChangePasswordRequest, current_user: dict = Depends(get_current_user)):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT password FROM users WHERE username = ?", (current_user['username'],))
+    stored_password = cursor.fetchone()[0]
+
+    if stored_password != payload.current_password:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (payload.new_password, current_user['username']))
+    conn.commit()
+    conn.close()
+
+    return {"message": "Password updated successfully."}
+
+
+@app.get("/dashboard/stats")
+def get_stats():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM patients")
+    total_patients = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM reports WHERE status='Pending'")
+    pending = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM reports WHERE diagnosis LIKE '%Acute%'")
+    critical = cursor.fetchone()[0]
+    conn.close()
+    return {"total_patients": total_patients, "pending_reports": pending, "critical_alerts": critical}
+
+
+@app.post("/patients/register")
+def register_patient(patient: PatientRequest):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO patients (name, mrn, nhs_number, dob, gender, history) VALUES (?, ?, ?, ?, ?, ?)",
+                       (patient.name, patient.mrn, patient.nhs_number, patient.dob, patient.gender, patient.history))
+        conn.commit()
+        pid = cursor.lastrowid
+    except sqlite3.IntegrityError as e:
+        conn.close()
+        if "UNIQUE constraint failed" in str(e): raise HTTPException(status_code=400, detail="MRN already exists")
+        raise HTTPException(status_code=500, detail=f"Database Error: {e}")
+    conn.close()
+    return {"id": pid}
+
+
+@app.get("/patients")
+def get_patients():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM patients ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    patients = []
+    for row in rows:
+        patients.append(
+            {
+                "id": row[0],
+                "name": row[1],
+                "mrn": row[2],
+                "nhs_number": row[3],
+                "dob": row[4],
+                "gender": row[5],
+                "history": row[6]
+            }
+        )
+    return patients
+
+
+@app.post("/upload")
+async def upload_slide(
+        file: UploadFile = File(...),
+        patient_id: int = Form(...),
+        notes: str = Form(""),
+        sample_type: str = Form("Peripheral Blood Smear"),
+        sample_date: str = Form(...),
+        assigned_to_id: str = Form(...),
+        user: dict = Depends(get_current_user)
+):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    # 1. Verify Consultant
+    cursor.execute("SELECT username FROM users WHERE username = ? OR license_id = ?", (assigned_to_id, assigned_to_id))
+    consultant = cursor.fetchone()
+
+    if not consultant:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Consultant ID not found in system")
+
+    consultant_username = consultant[0]
+
+    # 2. Save File
+    file_extension = file.filename.split(".")[-1]
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 3. RUN INFERENCE ON ALL MODELS
+    detected_objects = []
+    class_names = []
+    highest_conf = 0.0
+
+    for model in loaded_models:
+        results = model(file_path)
+
+        for result in results:
+            img_h, img_w = result.orig_shape
+
+            for box in result.boxes:
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                conf = float(box.conf[0])
+                cls = int(box.cls[0])
+                label = model.names[cls]
+
+                x_pct = (x1 / img_w) * 100
+                y_pct = (y1 / img_h) * 100
+                w_pct = ((x2 - x1) / img_w) * 100
+                h_pct = ((y2 - y1) / img_h) * 100
+
+                detected_objects.append({
+                    "x": x_pct,
+                    "y": y_pct,
+                    "w": w_pct,
+                    "h": h_pct,
+                    "label": label,
+                    "score": f"{int(conf * 100)}%"
+                })
+
+                class_names.append(label)
+                if conf > highest_conf:
+                    highest_conf = conf
+
+    if class_names:
+        most_common = Counter(class_names).most_common(1)
+        diagnosis = most_common[0][0]
+        confidence = f"{int(highest_conf * 100)}%"
+    else:
+        diagnosis = "No Abnormalities Detected"
+        confidence = "100%"
+
+    detections_json = json.dumps(detected_objects)
+
+    cursor.execute("""
+        INSERT INTO reports (patient_id, date, image_url, diagnosis, confidence, assigned_to, notes, sample_type, sample_date, detections) 
+        VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (patient_id, f"/uploads/{filename}", diagnosis, confidence, consultant_username, notes, sample_type,
+          sample_date, detections_json))
+
+    conn.commit()
+    report_id = cursor.lastrowid
+    conn.close()
+
+    return {
+        "report_id": report_id,
+        "diagnosis": diagnosis,
+        "confidence": confidence,
+        "image_url": f"/uploads/{filename}",
+        "assigned_to": consultant_username
     }
 
 
 @app.get("/reports/pending")
-def get_pending_reports(db: Session = Depends(get_db)):
-    # Return all pending reports with assignment info
-    results = db.query(Report).options(joinedload(Report.patient)).filter(Report.status == "Pending Review").all()
-    output = []
-    for r in results:
-        output.append({
-            "id": r.id,
-            "date": r.date,
-            "diagnosis": r.diagnosis,
-            "confidence": r.confidence,
-            "annotated_image": r.annotated_image,
-            "pdf_report": r.pdf_report,
-            "patient_name": r.patient.name if r.patient else "Unknown",
-            "patient_mrn": r.patient.mrn if r.patient else "N/A",
-            "patient_id": r.patient_id,
-            "assigned_to": r.assigned_to  # Include assignment in response
+def get_pending_reports(user: dict = Depends(get_current_user)):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.id, p.name, p.mrn, r.date, r.diagnosis, r.confidence, r.assigned_to, r.image_url, r.patient_id, r.sample_type, r.sample_date
+        FROM reports r
+        JOIN patients p ON r.patient_id = p.id
+        WHERE r.status = 'Pending' AND r.assigned_to = ?
+    """, (user['username'],))
+    rows = cursor.fetchall()
+    conn.close()
+
+    reports = []
+    for row in rows:
+        reports.append({
+            "id": row[0],
+            "patient_name": row[1],
+            "patient_mrn": row[2],
+            "date": row[3],
+            "diagnosis": row[4],
+            "confidence": row[5],
+            "assigned_to": row[6],
+            "image_url": row[7],
+            "patient_id": row[8],
+            "sample_type": row[9],
+            "sample_date": row[10]
         })
-    return output
+    return reports
 
 
-# --- USER ROUTES ---
-@app.get("/users/consultants")
-def get_consultants(db: Session = Depends(get_db)):
-    # Returns any user with 'Consultant' in their grade, or all users if none found (fallback)
-    consultants = db.query(User).filter(User.grade == "Consultant").all()
-    # If using demo data and no specific grades set, return all users as potential assignees
-    if not consultants:
-        return db.query(User).all()
-    return consultants
+@app.post("/reports/{report_id}/signoff")
+def sign_off_report(report_id: int, user: dict = Depends(get_current_user)):
+    if "Consultant" not in user['role'] and "Pathologist" not in user['role']:
+        raise HTTPException(status_code=403, detail="Unauthorized: Only Consultants can sign off reports.")
+
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE reports SET status = 'Authorized' WHERE id = ?", (report_id,))
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    details = f"Authorized by {user['full_name']} ({user['role']})"
+    cursor.execute(
+        "INSERT INTO audit_logs (report_id, action, performed_by, timestamp, details) VALUES (?, ?, ?, ?, ?)",
+        (report_id, "AUTHORIZED", user['username'], timestamp, details))
+
+    conn.commit()
+    conn.close()
+    return {"message": "Report authorized and audited."}
 
 
-@app.post("/register")
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already taken")
-    new_user = User(**user.dict())
-    db.add(new_user)
-    db.commit()
-    return {"message": "User created successfully"}
+@app.get("/patients/{patient_id}")
+def get_patient_details(patient_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM patients WHERE id = ?", (patient_id,))
+    patient = cursor.fetchone()
+    if not patient: raise HTTPException(status_code=404)
 
+    cursor.execute("""
+        SELECT id, date, diagnosis, confidence, status, image_url, assigned_to, sample_type, sample_date 
+        FROM reports WHERE patient_id = ? ORDER BY id DESC
+    """, (patient_id,))
+    reports_rows = cursor.fetchall()
+    conn.close()
 
-@app.post("/token")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == form_data.username).first()
-    if not user:
-        return {
-            "access_token": form_data.username, "token_type": "bearer",
-            "user_details": {"full_name": form_data.username, "theme_pref": "default", "grade": "Clinician",
-                             "trust": "Demo Trust"}
-        }
-    if user.password != form_data.password:
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    reports = []
+    for r in reports_rows:
+        reports.append({
+            "id": r[0], "date": r[1], "diagnosis": r[2], "confidence": r[3], "status": r[4],
+            "image_url": r[5], "assigned_to": r[6], "sample_type": r[7], "sample_date": r[8]
+        })
+
     return {
-        "access_token": user.username, "token_type": "bearer",
-        "user_details": {"full_name": user.full_name, "theme_pref": user.theme_pref, "gmc_number": user.gmc_number,
-                         "grade": user.grade, "trust": user.trust}
+        "id": patient[0], "name": patient[1], "mrn": patient[2], "nhs_number": patient[3],
+        "dob": patient[4], "gender": patient[5], "history": patient[6], "reports": reports
     }
 
 
-@app.get("/users/{username}")
-def get_user_profile(username: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
-    if not user: return {"username": username, "full_name": username, "theme_pref": "default", "gmc_number": "",
-                         "grade": "", "trust": ""}
-    return user
+@app.get("/reports/{report_id}")
+def get_single_report(report_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.id, r.date, r.diagnosis, r.confidence, r.status, r.image_url, r.notes, r.sample_type, r.sample_date, 
+               p.name, p.mrn, p.nhs_number, p.dob, p.gender, u.full_name, u.role, r.detections
+        FROM reports r
+        JOIN patients p ON r.patient_id = p.id
+        LEFT JOIN users u ON r.assigned_to = u.username
+        WHERE r.id = ?
+    """, (report_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    cursor.execute("SELECT action, performed_by, timestamp, details FROM audit_logs WHERE report_id = ?", (report_id,))
+    logs = cursor.fetchall()
+    audit_trail = [{"action": l[0], "user": l[1], "time": l[2], "details": l[3]} for l in logs]
+
+    conn.close()
+
+    try:
+        detections = json.loads(row[16]) if row[16] else []
+    except:
+        detections = []
+
+    return {
+        "id": row[0], "date": row[1], "diagnosis": row[2], "confidence": row[3], "status": row[4],
+        "image_url": row[5], "notes": row[6], "sample_type": row[7], "sample_date": row[8],
+        "patient": {"name": row[9], "mrn": row[10], "nhs_number": row[11], "dob": row[12], "gender": row[13]},
+        "consultant": {"name": row[14], "role": row[15]},
+        "detections": detections,
+        "audit_trail": audit_trail
+    }
 
 
-@app.put("/users/{username}")
-def update_user_profile(username: str, data: UserUpdate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
-    if not user: raise HTTPException(status_code=404, detail="User not found")
-    user.full_name = data.full_name
-    user.gmc_number = data.gmc_number
-    user.grade = data.grade
-    user.trust = data.trust
-    user.theme_pref = data.theme_pref
-    db.commit()
-    return {"message": "Profile updated"}
+# --- RESEARCH ENDPOINTS ---
 
-
-# --- PATIENT ROUTES ---
-@app.post("/patients/create")
-def create_patient(patient: dict, db: Session = Depends(get_db)):
-    existing = db.query(Patient).filter(Patient.mrn == patient['mrn']).first()
-    if existing: raise HTTPException(status_code=400, detail="Patient Exists")
-    db_patient = Patient(
-        name=patient['name'], mrn=patient['mrn'], nhs_number=patient.get('nhs_number'),
-        dob=patient['dob'], sex=patient['sex'], clinician=patient.get('clinician'),
-        ward=patient.get('ward'), indication=patient.get('indication')
-    )
-    db.add(db_patient)
-    db.commit()
-    return db_patient
-
-
-@app.get("/patients/search")
-def search_patients(query: str, db: Session = Depends(get_db)):
-    results = db.query(Patient).filter((Patient.name.contains(query)) | (Patient.mrn.contains(query))).all()
-    return {"patients": results}
-
-
-@app.get("/patients/{id}")
-def get_patient(id: int, db: Session = Depends(get_db)):
-    return db.query(Patient).filter(Patient.id == id).first()
-
-
-@app.get("/patient-reports/{id}")
-def get_reports(id: int, db: Session = Depends(get_db)):
-    return {"reports": db.query(Report).filter(Report.patient_id == id).all()}
-
-
-# --- REPORT SIGN OFF ---
-@app.put("/reports/{id}/signoff")
-def sign_off_report(id: int, req: SignOffRequest, db: Session = Depends(get_db)):
-    report = db.query(Report).filter(Report.id == id).first()
-    if not report: raise HTTPException(404, detail="Report not found")
-
-    report.status = "Authorized"
-    report.reviewer = req.reviewer
-    report.signed_off_date = str(date.today())
-
-    db.commit()
-    return {"message": "Report Authorized"}
-
-
-# --- RESEARCH ROUTES ---
 @app.post("/research/upload")
-async def upload_training_image(uploader: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
-    file_path = f"{TRAINING_DIR}/{file.filename}"
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    new_data = TrainingData(
-        filename=file.filename,
-        original_path=file_path,
-        upload_date=str(date.today()),
-        uploader=uploader,
-        annotations="[]",
-        status="Unlabeled"
-    )
-    db.add(new_data)
-    db.commit()
-    return {"message": "Uploaded to Research Lab"}
-
-
-@app.get("/research/images")
-def get_training_images(db: Session = Depends(get_db)):
-    return db.query(TrainingData).all()
-
-
-@app.put("/research/annotate/{id}")
-def save_annotations(id: int, data: AnnotationUpdate, db: Session = Depends(get_db)):
-    image = db.query(TrainingData).filter(TrainingData.id == id).first()
-    if not image: raise HTTPException(404, "Image not found")
-    image.annotations = data.annotations
-    image.status = data.status
-    db.commit()
-    return {"message": "Annotations Saved"}
-
-
-# --- ANALYSIS ROUTES ---
-class PDFReport(FPDF):
-    def header(self):
-        if os.path.exists(LOGO_PATH): self.image(LOGO_PATH, 10, 8, 25)
-        self.set_font('Arial', 'B', 15)
-        self.cell(80)
-        self.cell(110, 10, 'BENTARA PATHOLOGY', 0, 1, 'R')
-        self.ln(20)
-
-
-@app.post("/upload")
-async def upload_sample(
-        patient_id: int = Form(...),
-        assigned_to: str = Form(""),  # NEW FIELD
+async def upload_research_sample(
         file: UploadFile = File(...),
-        db: Session = Depends(get_db)
+        sample_type: str = Form(...),
+        notes: str = Form(""),
+        annotations: str = Form(...),
+        user: dict = Depends(get_current_user)
 ):
-    file_path = f"{UPLOAD_DIR}/{file.filename}"
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    annotated_path = f"{UPLOAD_DIR}/annotated_{file.filename}"
+    # 1. Standardize base ID and filename
+    base_id = str(uuid.uuid4())
+    base_name = f"research_{base_id}"
+    jpg_filename = f"{base_name}.jpg"
 
-    final_counts = {}
-    diagnosis_triggers = []
-    img = cv2.imread(file_path)
+    # 2. Process Image: Standardize to RGB JPEG for ML training
+    try:
+        contents = await file.read()
+        # Save temp file
+        temp_path = os.path.join(UPLOAD_DIR, file.filename)
+        with open(temp_path, "wb") as f:
+            f.write(contents)
 
-    if loaded_models:
-        for model in loaded_models:
-            results = model(img)
-            img = results[0].plot(img=img)
-            names = model.names
-            detected_cls = results[0].boxes.cls.cpu().numpy()
-            confidences = results[0].boxes.conf.cpu().numpy()
-            for i, cls_id in enumerate(detected_cls):
-                name = names[int(cls_id)]
-                clean_name = name.split(":")[-1].strip().title()
-                final_counts[clean_name] = final_counts.get(clean_name, 0) + 1
-                if "Blast" in clean_name and confidences[i] > 0.45: diagnosis_triggers.append("AML")
+        with Image.open(temp_path) as img:
+            rgb_img = img.convert('RGB')
+            # Save for Training Dataset
+            rgb_img.save(os.path.join(DATASET_DIR, "images", jpg_filename), "JPEG", quality=95)
+            # Save for App UI Gallery preview
+            rgb_img.save(os.path.join(UPLOAD_DIR, jpg_filename), "JPEG")
 
-    cv2.imwrite(annotated_path, img)
+        os.remove(temp_path)  # Cleanup temp original file
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image processing failed: {e}")
 
-    if not loaded_models:
-        diagnosis, confidence = "AI Models Not Found", "0%"
-    elif len(diagnosis_triggers) > 0:
-        diagnosis, confidence = "Acute Myeloid Leukaemia", f"{90 + (len(diagnosis_triggers) * 0.5):.1f}%"
-    elif len(final_counts) > 0:
-        diagnosis, confidence = "Normal / Benign", "98.5%"
-    else:
-        diagnosis, confidence = "No Cells Detected", "N/A"
+    # 3. Create YOLO formatted label file (.txt)
+    save_yolo_label(base_name, annotations)
 
-    patient = db.query(Patient).filter(Patient.id == patient_id).first()
-    pdf_filename = f"report_{patient_id}_{file.filename}.pdf"
-    pdf_path = f"{REPORT_DIR}/{pdf_filename}"
+    # 4. Save metadata to Database
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
 
-    pdf = PDFReport()
-    pdf.add_page()
-    pdf.set_fill_color(240, 245, 255)
-    pdf.rect(10, 35, 190, 40, 'F')
-    pdf.set_y(40)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(95, 8, f"Patient Name: {patient.name if patient else 'Unknown'}", 0, 0)
-    pdf.cell(95, 8, f"MRN: {patient.mrn if patient else 'N/A'}", 0, 1)
-    pdf.set_font("Arial", '', 10)
-    pdf.cell(95, 6, f"DOB: {patient.dob}", 0, 0)
-    pdf.cell(95, 6, f"NHS No: {patient.nhs_number or 'N/A'}", 0, 1)
-    pdf.cell(95, 6, f"Clinician: {patient.clinician or 'Unassigned'}", 0, 0)
-    pdf.cell(95, 6, f"Ward: {patient.ward or 'Outpatient'}", 0, 1)
-    pdf.ln(20)
+    user_id = user['id']
 
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "DIAGNOSTIC IMPRESSION", 0, 1, 'L')
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 16)
-    pdf.set_text_color(200 if "Acute" in diagnosis else 0, 0 if "Acute" in diagnosis else 128, 0)
-    pdf.cell(0, 10, diagnosis, 0, 1, 'L')
-    pdf.set_font("Arial", '', 11)
-    pdf.set_text_color(0)
-    pdf.cell(0, 8, f"AI Confidence Score: {confidence}", 0, 1, 'L')
-    pdf.ln(5)
+    cursor.execute("""
+        INSERT INTO research_samples (contributor_id, sample_type, image_url, annotations, notes, date)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+    """, (user_id, sample_type, f"/uploads/{jpg_filename}", annotations, notes))
 
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Peripheral Blood Smear Analysis:", 0, 1, 'L')
-    pdf.image(annotated_path, x=20, w=170)
-    pdf.ln(5)
+    conn.commit()
+    conn.close()
 
-    pdf.cell(0, 10, "Automated Cell Differential:", 0, 1, 'L')
-    pdf.set_font("Arial", '', 10)
-    if final_counts:
-        for cell, count in final_counts.items():
-            pdf.cell(50, 7, f"- {cell}", 1, 0)
-            pdf.cell(30, 7, f"{count}", 1, 1, 'C')
-    else:
-        pdf.cell(0, 7, "No recognizable cells identified.", 0, 1)
-    pdf.output(pdf_path)
+    return {"message": "Contribution saved and processed for training dataset"}
 
-    report = Report(
-        patient_id=patient_id,
-        date=str(date.today()),
-        diagnosis=diagnosis,
-        confidence=confidence,
-        annotated_image=annotated_path,
-        pdf_report=pdf_path,
-        assigned_to=assigned_to  # SAVE ASSIGNMENT
-    )
-    db.add(report)
-    db.commit()
 
-    return {"diagnosis": diagnosis, "annotated_image": annotated_path, "counts": final_counts, "pdf": pdf_path,
-            "status": "Pending Review"}
+@app.get("/research/gallery")
+def get_research_gallery(sample_type: Optional[str] = None):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    query = "SELECT r.id, r.sample_type, r.image_url, r.annotations, u.full_name, r.date FROM research_samples r LEFT JOIN users u ON r.contributor_id = u.id"
+    params = []
+
+    if sample_type:
+        query += " WHERE r.sample_type = ?"
+        params.append(sample_type)
+
+    # Default sort newest first
+    query += " ORDER BY r.date DESC"
+
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+
+    gallery = []
+    for r in rows:
+        try:
+            # Parse the JSON annotation string
+            parsed_ann = json.loads(r[3])
+
+            # Handle both old list-only format and new nested dictionary format
+            if isinstance(parsed_ann, dict) and 'cells' in parsed_ann:
+                box_count = len(parsed_ann['cells'])
+            else:
+                box_count = len(parsed_ann)
+        except Exception as e:
+            print(f"Error parsing sample {r[0]}: {e}")
+            box_count = 0
+
+        gallery.append({
+            "id": r[0],
+            "type": r[1],
+            "image_url": r[2],
+            "annotations": r[3],
+            "contributor": r[4] if r[4] else "Anonymous",
+            "date": r[5],
+            "box_count": box_count
+        })
+
+    return gallery
 
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-app.mount("/reports", StaticFiles(directory="reports"), name="reports")
-app.mount("/training_data", StaticFiles(directory="training_data"), name="training_data")
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

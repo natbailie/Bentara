@@ -1,153 +1,159 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
-    Clock, UploadCloud, UserPlus, Users, Activity,
-    ArrowRight, Search, Database, Settings, Siren
-} from "lucide-react";
-import { DashboardService } from "../../lib/api";
+    Users,
+    UserPlus,
+    UploadCloud,
+    Database,
+    ArrowRight
+} from 'lucide-react';
+import Link from 'next/link';
 
-export default function DashboardHome() {
-    const router = useRouter();
-    const [dateStr, setDateStr] = useState<string>("");
-    const [user, setUser] = useState({ name: "Clinician", details: { grade: "", trust: "" } });
-
-    // Stats State
+export default function DashboardPage() {
+    const [user, setUser] = useState<{ full_name: string; role: string } | null>(null);
     const [stats, setStats] = useState({ total_patients: 0, pending_reports: 0, critical_alerts: 0 });
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setDateStr(new Date().toLocaleDateString('en-GB', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-        }));
-
-        const storedUser = localStorage.getItem("user");
+        // 1. SAFELY Load User Info
+        const storedUser = localStorage.getItem("user_details");
         if (storedUser) {
-            try { setUser(JSON.parse(storedUser)); } catch (e) {}
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error("Corrupted dashboard user data");
+                // If data is bad, we don't crash, we just ignore it
+                localStorage.removeItem("user_details");
+            }
         }
 
-        // Load Live Stats
-        const loadStats = async () => {
+        // 2. Fetch Dashboard Stats
+        const fetchStats = async () => {
             try {
-                const res = await DashboardService.getStats();
-                setStats(res.data);
+                const res = await fetch('http://localhost:8000/dashboard/stats');
+                const data = await res.json();
+                setStats(data);
             } catch (e) {
-                console.error("Failed to load stats", e);
+                console.error("Stats error", e);
+            } finally {
+                setLoading(false);
             }
         };
-        loadStats();
+        fetchStats();
     }, []);
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-            {/* 1. TOP HEADER */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* HEADER */}
+            <div className="flex justify-between items-end">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900">Welcome, {user.name}</h1>
-                    <p className="text-slate-500 flex items-center gap-2 mt-1">
-                        {user.details.grade && <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded font-bold">{user.details.grade}</span>}
-                        {user.details.trust && <><span className="text-xs">•</span><span>{user.details.trust}</span></>}
-                    </p>
+                    <h1 className="text-3xl font-bold text-slate-900">
+                        Welcome, {user?.full_name || 'Doctor'}
+                    </h1>
+                    <p className="text-slate-500 mt-1">Select an action to get started.</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm border border-slate-200">
-                        <Clock size={16} className="text-blue-600" />
-                        <span>{dateStr || "Loading..."}</span>
+                <div className="bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">System Status</span>
+                    <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                        Online & Connected
                     </div>
-                    <button onClick={() => router.push('/dashboard/settings')} className="p-2 bg-white rounded-lg border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-300 shadow-sm transition-all">
-                        <Settings size={20} />
-                    </button>
                 </div>
             </div>
 
-            {/* 2. STATS CARDS (LIVE DATA) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* QUICK STATS ROW */}
+            <div className="bg-slate-900 rounded-2xl p-8 text-white flex flex-col md:flex-row justify-around items-center gap-8 shadow-2xl">
 
-                {/* Card 1: Patients */}
-                <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-6 text-white shadow-lg shadow-blue-900/20 relative overflow-hidden group">
-                    <div className="relative z-10 flex items-start justify-between">
-                        <div>
-                            <p className="text-blue-100 text-sm font-medium mb-1">Total Patients</p>
-                            <h2 className="text-4xl font-bold">{stats.total_patients}</h2>
-                        </div>
-                        <div className="bg-white/20 p-2 rounded-lg"><Users size={20} /></div>
-                    </div>
-                    <div className="relative z-10 mt-4 text-xs bg-white/10 inline-block px-2 py-1 rounded">Live Database Count</div>
-                    <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full group-hover:scale-110 transition-transform duration-500" />
+                {/* LINKED: Pending Reviews Card */}
+                <Link href="/dashboard/reviews" className="text-center group cursor-pointer">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1 group-hover:text-blue-400 transition-colors">Pending Reviews</p>
+                    <p className="text-4xl font-bold text-blue-400 group-hover:scale-110 transition-transform">{loading ? '-' : stats.pending_reports}</p>
+                </Link>
+
+                <div className="w-px h-12 bg-slate-700 hidden md:block"></div>
+
+                <div className="text-center">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Patients</p>
+                    <p className="text-4xl font-bold text-white">{loading ? '-' : stats.total_patients}</p>
                 </div>
 
-                {/* Card 2: Pending (Clickable) */}
-                <button
-                    onClick={() => router.push('/dashboard/pending')}
-                    className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-all text-left group hover:border-orange-300"
-                >
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-slate-500 text-sm font-medium mb-1 group-hover:text-orange-600 transition-colors">Pending Reports</p>
-                            <h2 className="text-4xl font-bold text-slate-800">{stats.pending_reports}</h2>
-                        </div>
-                        <div className="bg-orange-50 text-orange-600 p-2 rounded-lg group-hover:bg-orange-100"><Activity size={20} /></div>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-4 flex items-center gap-1">
-                        <span className={`w-2 h-2 rounded-full ${stats.pending_reports > 0 ? 'bg-orange-500 animate-pulse' : 'bg-slate-300'}`} />
-                        {stats.pending_reports > 0 ? "Requires Review" : "All Clear"}
-                    </p>
-                </button>
+                <div className="w-px h-12 bg-slate-700 hidden md:block"></div>
 
-                {/* Card 3: CRITICAL ALERTS (Replaces AI Accuracy) */}
-                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-slate-500 text-sm font-medium mb-1">Critical Findings</p>
-                            <h2 className="text-4xl font-bold text-rose-600">{stats.critical_alerts}</h2>
-                        </div>
-                        <div className="bg-rose-50 text-rose-600 p-2 rounded-lg animate-pulse"><Siren size={20} /></div>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-4">Positive AML / Acute Cases Detected</p>
+                <div className="text-center">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Critical Alerts</p>
+                    <p className="text-4xl font-bold text-red-500">{loading ? '-' : stats.critical_alerts}</p>
                 </div>
             </div>
 
-            {/* 3. QUICK ACTIONS */}
-            <div>
-                <h2 className="text-xl font-bold text-slate-900 mb-4">Quick Actions</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <button onClick={() => router.push('/dashboard/upload')} className="group bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all text-left">
-                        <div className="flex items-center gap-4 mb-3">
-                            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors"><UploadCloud size={20} /></div>
-                            <h3 className="font-bold text-slate-800">Upload Sample</h3>
-                        </div>
-                        <p className="text-sm text-slate-500 mb-4">Run AI analysis on new microscopy images.</p>
-                        <div className="text-blue-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">Start Analysis <ArrowRight size={16} /></div>
-                    </button>
+            {/* --- NAVIGATION OPTIONS --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-                    <button onClick={() => router.push('/dashboard/register')} className="group bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:border-purple-300 hover:shadow-md transition-all text-left">
-                        <div className="flex items-center gap-4 mb-3">
-                            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors"><UserPlus size={20} /></div>
-                            <h3 className="font-bold text-slate-800">Register Patient</h3>
+                {/* OPTION 1: REGISTER */}
+                <Link href="/dashboard/register" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <UserPlus size={24} />
                         </div>
-                        <p className="text-sm text-slate-500 mb-4">Create a new patient record in the system.</p>
-                        <div className="text-purple-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">New Record <ArrowRight size={16} /></div>
-                    </button>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Register Patient</h3>
+                        <p className="text-sm text-slate-500 mb-4">Create a new patient record.</p>
+                        <span className="text-blue-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Start <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
 
-                    <button onClick={() => router.push('/dashboard/patients')} className="group bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md transition-all text-left">
-                        <div className="flex items-center gap-4 mb-3">
-                            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors"><Search size={20} /></div>
-                            <h3 className="font-bold text-slate-800">Patient Directory</h3>
+                {/* OPTION 2: UPLOAD */}
+                <Link href="/dashboard/upload" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            <UploadCloud size={24} />
                         </div>
-                        <p className="text-sm text-slate-500 mb-4">Search and manage existing patient records.</p>
-                        <div className="text-emerald-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">Search Records <ArrowRight size={16} /></div>
-                    </button>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Upload Sample</h3>
+                        <p className="text-sm text-slate-500 mb-4">Run AI diagnostics on slides.</p>
+                        <span className="text-indigo-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Upload <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
 
-                    <button onClick={() => router.push('/dashboard/research')} className="group bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all text-left">
-                        <div className="flex items-center gap-4 mb-3">
-                            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Database size={20} /></div>
-                            <h3 className="font-bold text-slate-800">Research Lab</h3>
+                {/* OPTION 3: DIRECTORY */}
+                <Link href="/dashboard/patients" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-emerald-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                            <Users size={24} />
                         </div>
-                        <p className="text-sm text-slate-500 mb-4">Annotate data for model training.</p>
-                        <div className="text-indigo-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">Open Lab <ArrowRight size={16} /></div>
-                    </button>
-                </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Patient Directory</h3>
+                        <p className="text-sm text-slate-500 mb-4">View {stats.total_patients} registered records.</p>
+                        <span className="text-emerald-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Browse <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
+
+                {/* OPTION 4: RESEARCH */}
+                <Link href="/dashboard/research" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-purple-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                            <Database size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Research Lab</h3>
+                        <p className="text-sm text-slate-500 mb-4">Contribute to the training dataset.</p>
+                        <span className="text-purple-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Access <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
+
             </div>
 
         </div>
