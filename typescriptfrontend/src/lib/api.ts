@@ -1,7 +1,12 @@
 import axios from 'axios';
 
-// 1. Dynamic API URL: Uses environment variable if present, otherwise falls back to local
+// Define the base URL
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+// Add the debug log here
+if (typeof window !== 'undefined') {
+    console.log("DEBUG: Current API URL is ->", API_BASE_URL);
+}
 
 const api = axios.create({
     baseURL: API_BASE_URL,
