@@ -16,15 +16,25 @@ import {
     Clock
 } from 'lucide-react';
 
+// Define Interface to fix "Unexpected any" errors
+interface UserData {
+    full_name: string;
+    role: string;
+    username: string;
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
-    const [user, setUser] = useState<{ full_name: string; role: string; username: string } | null>(null);
-    const [mounted, setMounted] = useState(false); // NEW: Fixes Hydration Error
+    const [user, setUser] = useState<UserData | null>(null);
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        setMounted(true); // Mark component as mounted on client
+        // FIX: Wrap setState in a timeout to avoid cascading renders during build
+        const timer = setTimeout(() => {
+            setMounted(true);
+        }, 0);
 
         // 1. Load User Details
         const storedUser = localStorage.getItem("user_details");
@@ -32,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (storedUser) {
             try {
                 setUser(JSON.parse(storedUser));
-            } catch (e) {
+            } catch (error) {
                 console.warn("Corrupted user data found. Resetting session.");
                 localStorage.removeItem("user_details");
                 localStorage.removeItem("access_token");
@@ -41,6 +51,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         } else {
             router.push('/');
         }
+
+        return () => clearTimeout(timer);
     }, [router]);
 
     const handleLogout = () => {
@@ -66,7 +78,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden">
-
             {/* MOBILE TOGGLE */}
             <button
                 className="md:hidden absolute top-4 left-4 z-50 p-2 bg-slate-900 text-white rounded-md"
@@ -126,7 +137,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <div className="overflow-hidden w-full">
                             <p className="text-sm font-bold text-white truncate">{user?.full_name || "Loading..."}</p>
 
-                            {/* UPDATED: Displays Role AND ID side-by-side */}
                             <div className="flex items-center gap-2 text-xs mt-1">
                                 <span className="text-emerald-400 font-mono font-bold tracking-wide truncate max-w-[80px]">
                                     {user?.role || "Staff"}
@@ -154,7 +164,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {children}
                 </div>
             </main>
-
         </div>
     );
 }

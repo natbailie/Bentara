@@ -1,50 +1,64 @@
 import axios from 'axios';
 
-export const API_BASE_URL = 'http://127.0.0.1:8000';
+// 1. Dynamic API URL: Uses environment variable if present, otherwise falls back to local
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 const api = axios.create({
     baseURL: API_BASE_URL,
 });
 
+// 2. Auth Interceptor: Automatically attaches Bearer token from localStorage
+api.interceptors.request.use((config) => {
+    if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('access_token');
+        if (token && config.headers) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    }
+    return config;
+}, (error) => {
+    return Promise.reject(error);
+});
+
 export const getFileUrl = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
-    return `${API_BASE_URL}/${path}`;
+    // Standardizes the path for Hugging Face or Local environments
+    const cleanPath = path.startsWith("/") ? path.substring(1) : path;
+    return `${API_BASE_URL}/${cleanPath}`;
 };
 
 export const UserService = {
     register: (data: any) => api.post('/register', data),
     getProfile: (username: string) => api.get(`/users/${username}`),
-    updateProfile: (username: string, data: any) => api.put(`/users/${username}`, data),
-    getConsultants: () => api.get('/users/consultants'), // NEW
+    updateProfile: (data: any) => api.put('/users/update', data), // Matches updated main.py
+    getConsultants: () => api.get('/users/consultants'),
+    changePassword: (data: any) => api.post('/users/change-password', data)
 };
 
 export const PatientService = {
-    create: (data: any) => api.post('/patients/create', data),
-    search: (query: string) => api.get(`/patients/search?query=${query}`),
+    register: (data: any) => api.post('/patients/register', data), // Updated endpoint
+    getAll: () => api.get('/patients'),
     getOne: (id: number) => api.get(`/patients/${id}`),
-    getReports: (id: number) => api.get(`/patient-reports/${id}`),
-    signOff: (id: number, reviewerName: string) => api.put(`/reports/${id}/signoff`, { reviewer: reviewerName })
 };
 
 export const ResearchService = {
     upload: (formData: FormData) => api.post('/research/upload', formData),
-    getAll: () => api.get('/research/images'),
-    saveAnnotations: (id: number, annotations: string, status: string) =>
-        api.put(`/research/annotate/${id}`, { annotations, status })
+    getGallery: (type?: string) => {
+        const url = type ? `/research/gallery?sample_type=${encodeURIComponent(type)}` : '/research/gallery';
+        return api.get(url);
+    }
 };
 
 export const DashboardService = {
     getStats: () => api.get('/dashboard/stats'),
-    getPendingReports: () => api.get('/reports/pending')
+    getPendingReports: () => api.get('/reports/pending'),
+    signOff: (id: number) => api.post(`/reports/${id}/signoff`)
 };
 
-// ... existing imports ...
-
-export const SystemService = {
-    getAuditLogs: () => api.get('/system/audit-logs'), // NEW
+export const ReportService = {
+    getOne: (id: number) => api.get(`/reports/${id}`),
+    uploadSlide: (formData: FormData) => api.post('/upload', formData)
 };
-
-// ... keep existing UserService, PatientService etc ...
 
 export default api;
