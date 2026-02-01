@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-// REMOVED: Microscope icon is no longer needed
-// CHANGED: Replaced BadgeId with IdCard below
+// Import your centralized API service
+import { UserService } from '@/lib/api';
 import { Loader2, CheckCircle, ShieldAlert, ArrowRight, IdCard, Building } from 'lucide-react';
 
 export default function UserRegisterPage() {
@@ -13,7 +13,6 @@ export default function UserRegisterPage() {
     const [globalError, setGlobalError] = useState("");
     const [successData, setSuccessData] = useState<{ username: string } | null>(null);
 
-    // Field Logic State
     const [isPhysician, setIsPhysician] = useState(true);
 
     const [formData, setFormData] = useState({
@@ -22,18 +21,14 @@ export default function UserRegisterPage() {
         email: "",
         password: "",
         confirmPassword: "",
-        role: "Consultant", // Default
+        role: "Consultant",
         license_id: ""
     });
 
-    // Update "Physician" status whenever Role changes
     useEffect(() => {
-        // List of roles that do NOT need a GMC number
         const nonPhysicianRoles = ["Lab Technician", "Biomedical Scientist", "Researcher", "Admin / Secretary", "Student"];
         const isDoc = !nonPhysicianRoles.includes(formData.role);
         setIsPhysician(isDoc);
-
-        // Clear the license field when switching modes to avoid confusion
         setFormData(prev => ({ ...prev, license_id: "" }));
     }, [formData.role]);
 
@@ -42,74 +37,57 @@ export default function UserRegisterPage() {
         setLoading(true);
         setGlobalError("");
 
-        // --- 1. STRICT VALIDATION ---
-
-        // Password Length (Increased to 8)
+        // STRICT VALIDATION
         if (formData.password.length < 8) {
             setGlobalError("Security Alert: Password must be at least 8 characters long.");
             setLoading(false);
             return;
         }
 
-        // Password Match
         if (formData.password !== formData.confirmPassword) {
             setGlobalError("Security Alert: Passwords do not match.");
             setLoading(false);
             return;
         }
 
-        // GMC Number Validation (Only if Physician)
         if (isPhysician) {
-            // Regex: Exactly 7 digits
             const gmcRegex = /^\d{7}$/;
             if (!gmcRegex.test(formData.license_id)) {
                 setGlobalError("Invalid GMC Number: Must be exactly 7 digits.");
                 setLoading(false);
                 return;
             }
-        } else {
-            // Employee ID Validation (Must not be empty)
-            if (formData.license_id.length < 3) {
-                setGlobalError("Invalid ID: Employee/Trust ID is required.");
-                setLoading(false);
-                return;
-            }
+        } else if (formData.license_id.length < 3) {
+            setGlobalError("Invalid ID: Employee/Trust ID is required.");
+            setLoading(false);
+            return;
         }
 
-        // --- 2. PREPARE DATA ---
-
-        // Combine Title + Name for storage (e.g. "Dr. John Smith")
         const finalName = `${formData.title} ${formData.full_name}`.trim();
-
-        // Generate Username: "smi" + "829"
         const namePart = formData.full_name.replace(/\s/g, '').substring(0, 3).toLowerCase();
         const randomPart = Math.floor(100 + Math.random() * 900);
         const generatedUsername = `${namePart}${randomPart}`;
 
         try {
-            const res = await fetch('http://localhost:8000/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: generatedUsername,
-                    email: formData.email,
-                    password: formData.password,
-                    full_name: finalName, // Sending combined name
-                    role: formData.role,
-                    license_id: formData.license_id
-                }),
+            // FIX: Use UserService instead of hardcoded fetch
+            const res = await UserService.register({
+                username: generatedUsername,
+                email: formData.email,
+                password: formData.password,
+                full_name: finalName,
+                role: formData.role,
+                license_id: formData.license_id
             });
 
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.detail || "Registration failed. Please try again.");
+            // Axios puts the response body in the .data property
+            if (res.data) {
+                setSuccessData({ username: generatedUsername });
             }
 
-            setSuccessData({ username: generatedUsername });
-
         } catch (err: any) {
-            setGlobalError(err.message);
+            // Detailed error handling for Axios/Fetch mismatches
+            const message = err.response?.data?.detail || err.message || "Registration failed.";
+            setGlobalError(message);
         } finally {
             setLoading(false);
         }
@@ -142,29 +120,19 @@ export default function UserRegisterPage() {
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col md:flex-row">
-
-                {/* Left: Info Panel */}
+                {/* Left Panel */}
                 <div className="bg-slate-900 p-10 md:w-2/5 text-white flex flex-col justify-between relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
-
                     <div className="relative z-10">
-                        {/* --- LOGO SECTION UPDATED --- */}
                         <div className="flex flex-col items-center gap-6 mb-10 w-full text-center">
                             <div className="w-64 h-64 bg-white rounded-xl flex items-center justify-center shadow-lg overflow-hidden p-1">
-                                {/* Using the logo from the public folder */}
-                                <img
-                                    src="/bentaralogo.jpg"
-                                    alt="Bentara Logo"
-                                    className="w-full h-full object-contain"
-                                />
+                                <img src="/bentaralogo.jpg" alt="Bentara Logo" className="w-full h-full object-contain" />
                             </div>
                             <span className="text-2xl font-bold tracking-tight">BENTARA</span>
                         </div>
-
                         <h2 className="text-3xl font-bold leading-tight mb-4">Join the Network.</h2>
                         <p className="text-slate-400 leading-relaxed">Secure registration for NHS and Research personnel. Access AI-assisted diagnostics securely.</p>
                     </div>
-
                     <div className="relative z-10 mt-12">
                         <div className="flex items-center gap-4 text-sm font-medium text-slate-300 mb-4">
                             <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">1</div>
@@ -181,7 +149,7 @@ export default function UserRegisterPage() {
                     </div>
                 </div>
 
-                {/* Right: Form */}
+                {/* Right Panel: Form */}
                 <div className="p-10 md:w-3/5">
                     <div className="flex justify-between items-center mb-8">
                         <h1 className="text-2xl font-bold text-slate-900">Create Account</h1>
@@ -198,8 +166,6 @@ export default function UserRegisterPage() {
                     )}
 
                     <form onSubmit={handleRegister} className="space-y-5">
-
-                        {/* Name Section with Title */}
                         <div className="grid grid-cols-4 gap-4">
                             <div className="col-span-1 space-y-1">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Title</label>
@@ -224,7 +190,6 @@ export default function UserRegisterPage() {
                             </div>
                         </div>
 
-                        {/* Role / Grade */}
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Position / Grade</label>
                             <select
@@ -251,7 +216,6 @@ export default function UserRegisterPage() {
                             </select>
                         </div>
 
-                        {/* Email & DYNAMIC License ID */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Trust Email</label>
@@ -261,14 +225,12 @@ export default function UserRegisterPage() {
                                 />
                             </div>
 
-                            {/* DYNAMIC FIELD: GMC vs Employee ID */}
                             <div className="space-y-1">
                                 <label className={`text-xs font-bold uppercase tracking-wider transition-colors ${isPhysician ? 'text-blue-600' : 'text-slate-500'}`}>
                                     {isPhysician ? "GMC Number (7 Digits)" : "Hospital/Trust Employee ID"}
                                 </label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-3 text-slate-400">
-                                        {/* CHANGED: IdCard is the correct icon name */}
                                         {isPhysician ? <IdCard size={20}/> : <Building size={20}/>}
                                     </div>
                                     <input
@@ -281,7 +243,6 @@ export default function UserRegisterPage() {
                                         maxLength={isPhysician ? 7 : 20}
                                         value={formData.license_id}
                                         onChange={e => {
-                                            // If physician, only allow numbers
                                             if (isPhysician) {
                                                 const val = e.target.value.replace(/\D/g, '');
                                                 setFormData({...formData, license_id: val});
@@ -294,7 +255,6 @@ export default function UserRegisterPage() {
                             </div>
                         </div>
 
-                        {/* Password */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
@@ -316,9 +276,7 @@ export default function UserRegisterPage() {
                             <button disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex justify-center items-center gap-2">
                                 {loading ? <Loader2 className="animate-spin" /> : <>Create Account <ArrowRight size={18} /></>}
                             </button>
-                            <p className="text-xs text-center text-slate-400 mt-4">By clicking Create Account, you agree to our Terms of Service regarding patient data privacy.</p>
                         </div>
-
                     </form>
                 </div>
             </div>
