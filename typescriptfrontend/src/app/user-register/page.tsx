@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 // Import your centralized API service
-import { UserService } from '@/lib/api';
+import { UserService, API_BASE_URL } from '@/lib/api';
 import { Loader2, CheckCircle, ShieldAlert, ArrowRight, IdCard, Building } from 'lucide-react';
 
 export default function UserRegisterPage() {
@@ -25,8 +25,13 @@ export default function UserRegisterPage() {
         license_id: ""
     });
 
+    // DEBUG LOG: Run this as soon as the user visits the register page
     useEffect(() => {
-        const nonPhysicianRoles = ["Lab Technician", "Biomedical Scientist", "Researcher", "Admin / Secretary", "Student"];
+        console.log("REGISTER PAGE LOADED. API TARGET:", API_BASE_URL);
+    }, []);
+
+    useEffect(() => {
+        const nonPhysicianRoles = ["Lab Technician", "Biomedical Scientist", "Researcher", "Admin/Secretary", "Student"];
         const isDoc = !nonPhysicianRoles.includes(formData.role);
         setIsPhysician(isDoc);
         setFormData(prev => ({ ...prev, license_id: "" }));
@@ -69,7 +74,7 @@ export default function UserRegisterPage() {
         const generatedUsername = `${namePart}${randomPart}`;
 
         try {
-            // FIX: Use UserService instead of hardcoded fetch
+            // USES API.TS: This will use the URL defined in your env vars
             const res = await UserService.register({
                 username: generatedUsername,
                 email: formData.email,
@@ -79,7 +84,6 @@ export default function UserRegisterPage() {
                 license_id: formData.license_id
             });
 
-            // Axios puts the response body in the .data property
             if (res.data) {
                 setSuccessData({ username: generatedUsername });
             }
@@ -93,6 +97,7 @@ export default function UserRegisterPage() {
         }
     };
 
+    // ... (rest of your return statement remains the same)
     if (successData) {
         return (
             <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
