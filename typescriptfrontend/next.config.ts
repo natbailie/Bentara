@@ -1,8 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Disable the experimental compiler if it's causing unrecognized key warnings
+  // 1. Image Configuration: Whitelist Hugging Face to display backend images
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'natbailie-bentara-backend.hf.space',
+        port: '',
+        pathname: '/uploads/**',
+      },
+    ],
+  },
 
+  // 2. Build Settings: Preserved from your original script
   typescript: {
     // Allows production builds to complete even if your project has type errors
     ignoreBuildErrors: true,
