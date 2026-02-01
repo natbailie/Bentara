@@ -1,22 +1,26 @@
 import axios from 'axios';
 
-// 1. Dynamic API URL: Prefers the Vercel env var, falls back to local for your Mac
-// IMPORTANT: Use the HTTPS URL from Hugging Face in your Vercel settings!
+/**
+ * 1. Dynamic API URL Logic
+ * Next.js requires the 'NEXT_PUBLIC_' prefix to expose variables to the browser.
+ * In production, it replaces this reference with the hardcoded value from your Vercel settings.
+ *
+ */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
-// DEBUG LOG: Look for this in your browser console (Inspect > Console)
+// DEBUG: This will print to your browser's console (Inspect > Console)
 if (typeof window !== 'undefined') {
-    console.log("Bentara API Initialized. Target URL ->", API_BASE_URL);
+    console.log("Bentara API Instance created with Base URL:", API_BASE_URL);
 }
 
 const api = axios.create({
     baseURL: API_BASE_URL,
     headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
     }
 });
 
-// 2. Auth Interceptor: Automatically attaches Bearer token if it exists
+// 2. Auth Interceptor: Automatically attaches Bearer token from localStorage
 api.interceptors.request.use((config) => {
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('access_token');
@@ -25,9 +29,10 @@ api.interceptors.request.use((config) => {
         }
     }
     return config;
-}, (error) => Promise.reject(error));
+}, (error) => {
+    return Promise.reject(error);
+});
 
-// Helper for image/file URLs
 export const getFileUrl = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
@@ -36,12 +41,36 @@ export const getFileUrl = (path: string) => {
 };
 
 export const UserService = {
-    // Axios post automatically handles JSON.stringify
     register: (data: any) => api.post('/register', data),
     getProfile: (username: string) => api.get(`/users/${username}`),
+    updateProfile: (data: any) => api.put('/users/update', data),
     getConsultants: () => api.get('/users/consultants'),
+    changePassword: (data: any) => api.post('/users/change-password', data)
 };
 
-// ... add other services as needed
+export const PatientService = {
+    register: (data: any) => api.post('/patients/register', data),
+    getAll: () => api.get('/patients'),
+    getOne: (id: number) => api.get(`/patients/${id}`),
+};
+
+export const ResearchService = {
+    upload: (formData: FormData) => api.post('/research/upload', formData),
+    getGallery: (type?: string) => {
+        const url = type ? `/research/gallery?sample_type=${encodeURIComponent(type)}` : '/research/gallery';
+        return api.get(url);
+    }
+};
+
+export const DashboardService = {
+    getStats: () => api.get('/dashboard/stats'),
+    getPendingReports: () => api.get('/reports/pending'),
+    signOff: (id: number) => api.post(`/reports/${id}/signoff`)
+};
+
+export const ReportService = {
+    getOne: (id: number) => api.get(`/reports/${id}`),
+    uploadSlide: (formData: FormData) => api.post('/upload', formData)
+};
 
 export default api;
