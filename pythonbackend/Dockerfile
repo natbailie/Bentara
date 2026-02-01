@@ -1,30 +1,27 @@
-# Use a lightweight Python base image
-FROM python:3.11-slim
+# Use an official Python runtime as a parent image
+FROM python:3.9
 
-# Install system dependencies needed for OpenCV (required by YOLO/Ultralytics)
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-            && rm -rf /var/lib/apt/lists/*
+# Set the working directory in the container
+WORKDIR /code
 
-# Create a non-root user (mandatory for Hugging Face Spaces security)
-RUN useradd -m -u 1000 user
-USER user
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH
+# Copy the requirements file into the container
+COPY requirements.txt .
 
-WORKDIR $HOME/app
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Python requirements
-COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-                                         pip install --no-cache-dir -r requirements.txt
+# Copy the rest of the application code
+COPY . .
 
-# Copy the models folder and main.py script
-COPY --chown=user . .
+# Ensure the models directory exists and is copied
+# Your main.py expects models in /code/models/
+COPY ./models ./models
 
-# Expose port 7860 (Spaces mandatory port)
+# Create a directory for uploads in /tmp for write permissions
+RUN mkdir -p /tmp/uploads /tmp/dataset/images /tmp/dataset/labels && chmod 777 /tmp/uploads
+
+# Expose the port Hugging Face Spaces expects
 EXPOSE 7860
 
-# Start the application using Uvicorn
+# Command to run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
