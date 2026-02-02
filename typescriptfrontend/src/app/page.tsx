@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
-// Import the dynamic URL helper to ensure we don't use localhost
+// IMPORT the dynamic URL helper to replace localhost
 import { API_BASE_URL } from '@/lib/api';
 
 export default function LoginPage() {
@@ -25,7 +25,7 @@ export default function LoginPage() {
       formData.append("username", identifier);
       formData.append("password", password);
 
-      // FIXED: Swapped 'http://localhost:8000/token' for dynamic API_BASE_URL
+      // UPDATED: Use API_BASE_URL instead of 'http://localhost:8000/token'
       const tokenRes = await fetch(`${API_BASE_URL}/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -33,7 +33,8 @@ export default function LoginPage() {
       });
 
       if (!tokenRes.ok) {
-        throw new Error("Invalid credentials. Please check your ID/Email and password.");
+        const errData = await tokenRes.json().catch(() => ({}));
+        throw new Error(errData.detail || "Invalid credentials. Please check your ID/Email and password.");
       }
 
       const tokenData = await tokenRes.json();
@@ -43,7 +44,7 @@ export default function LoginPage() {
       localStorage.setItem("access_token", token);
 
       // STEP 2: Fetch User Details
-      // FIXED: Swapped 'http://localhost:8000/users/me' for dynamic API_BASE_URL
+      // UPDATED: Use API_BASE_URL instead of 'http://localhost:8000/users/me'
       const userRes = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
         headers: {
@@ -69,7 +70,7 @@ export default function LoginPage() {
       console.error("Login Error:", err);
       // Detailed error message for debugging
       setError(err.message === "Failed to fetch"
-          ? "Connection Refused: Ensure your Hugging Face Space is 'Running'."
+          ? "Network Error: Cannot reach the backend. Check if Hugging Face is 'Running'."
           : err.message || "An unexpected error occurred.");
       setLoading(false);
       localStorage.removeItem("access_token");
@@ -115,7 +116,6 @@ export default function LoginPage() {
 
           {/* RIGHT PANEL: LOGIN FORM */}
           <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
-
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-slate-900">Sign In</h2>
               <p className="text-slate-500 mt-1">Enter your credentials to access the lab.</p>
