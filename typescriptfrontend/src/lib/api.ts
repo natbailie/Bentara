@@ -1,16 +1,17 @@
 import axios from 'axios';
 
 /**
- * 1. Dynamic API URL Logic
- * Next.js requires the 'NEXT_PUBLIC_' prefix to expose variables to the browser.
- * In production, it replaces this reference with the hardcoded value from your Vercel settings.
- *
+ * 1. Strict API URL Logic
+ * Fallback to localhost has been removed to prevent connection errors in production.
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string;
 
-// DEBUG: This will print to your browser's console (Inspect > Console)
 if (typeof window !== 'undefined') {
-    console.log("Bentara API Instance created with Base URL:", API_BASE_URL);
+    if (!API_BASE_URL) {
+        console.error("FATAL CONFIG ERROR: NEXT_PUBLIC_API_URL is undefined. The app cannot connect to the backend.");
+    } else {
+        console.log("Bentara API Instance strictly locked to:", API_BASE_URL);
+    }
 }
 
 const api = axios.create({
@@ -42,7 +43,8 @@ export const getFileUrl = (path: string) => {
 
 export const UserService = {
     register: (data: any) => api.post('/register', data),
-    getProfile: (username: string) => api.get(`/users/${username}`),
+    // Updated to use the profile endpoint required for dashboard access
+    getProfile: () => api.get('/users/me'),
     updateProfile: (data: any) => api.put('/users/update', data),
     getConsultants: () => api.get('/users/consultants'),
     changePassword: (data: any) => api.post('/users/change-password', data)
