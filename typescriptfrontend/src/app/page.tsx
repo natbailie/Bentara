@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+// IMPORT the dynamic URL helper
+import { API_BASE_URL } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [identifier, setIdentifier] = useState(""); // Renamed for clarity (holds ID or Email)
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -20,18 +22,19 @@ export default function LoginPage() {
     try {
       // STEP 1: Get Access Token
       const formData = new URLSearchParams();
-      // The backend field is still named 'username', but we send the email/ID string
       formData.append("username", identifier);
       formData.append("password", password);
 
-      const tokenRes = await fetch('http://localhost:8000/token', {
+      // UPDATED: Points to Hugging Face instead of localhost
+      const tokenRes = await fetch(`${API_BASE_URL}/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
       });
 
       if (!tokenRes.ok) {
-        throw new Error("Invalid credentials. Please check your ID/Email and password.");
+        const errData = await tokenRes.json().catch(() => ({}));
+        throw new Error(errData.detail || "Invalid credentials. Please check your ID/Email and password.");
       }
 
       const tokenData = await tokenRes.json();
@@ -41,7 +44,7 @@ export default function LoginPage() {
       localStorage.setItem("access_token", token);
 
       // STEP 2: Fetch User Details
-      const userRes = await fetch('http://localhost:8000/users/me', {
+      const userRes = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -64,7 +67,10 @@ export default function LoginPage() {
 
     } catch (err: any) {
       console.error("Login Error:", err);
-      setError(err.message || "An unexpected error occurred.");
+      // Detailed error message to help you debug
+      setError(err.message === "Failed to fetch"
+          ? "Cannot reach the secure server. Ensure the backend is 'Running' on Hugging Face."
+          : err.message || "An unexpected error occurred.");
       setLoading(false);
       localStorage.removeItem("access_token");
       localStorage.removeItem("user_details");
@@ -80,7 +86,6 @@ export default function LoginPage() {
             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
 
             <div className="relative z-10">
-              {/* --- UPDATED LOGO SECTION --- */}
               <div className="flex flex-col items-center gap-6 mb-10 w-full text-center">
                 <div className="w-64 h-64 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden p-2">
                   <img
@@ -110,7 +115,6 @@ export default function LoginPage() {
 
           {/* RIGHT PANEL: LOGIN FORM */}
           <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
-
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-slate-900">Sign In</h2>
               <p className="text-slate-500 mt-1">Enter your credentials to access the lab.</p>
@@ -124,9 +128,7 @@ export default function LoginPage() {
             )}
 
             <form onSubmit={handleLogin} className="space-y-5">
-
               <div className="space-y-1">
-                {/* UPDATED LABEL */}
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Login ID / Email</label>
                 <input
                     required
@@ -166,13 +168,11 @@ export default function LoginPage() {
               </Link>
               </p>
             </div>
-
           </div>
         </div>
 
-        {/* Footer / Copyright */}
         <div className="absolute bottom-4 text-center w-full text-xs text-slate-400">
-          &copy; 2025 Bentara Clinical Systems. All rights reserved.
+          &copy; 2026 Bentara Clinical Systems. All rights reserved.
         </div>
       </div>
   );
