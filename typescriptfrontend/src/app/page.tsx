@@ -46,10 +46,7 @@ export default function LoginPage() {
       // STEP 2: Fetch User Details
       const userRes = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (!userRes.ok) {
