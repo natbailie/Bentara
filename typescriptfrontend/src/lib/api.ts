@@ -6,7 +6,7 @@ import axios from 'axios';
  * In production, it replaces this reference with the hardcoded value from your Vercel settings.
  *
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // DEBUG: This will print to your browser's console (Inspect > Console)
 if (typeof window !== 'undefined') {
