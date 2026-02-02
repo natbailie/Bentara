@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
-import { API_BASE_URL } from '@/lib/api';
+
+// Hard-coded target to prevent any local fallbacks
+const BACKEND_URL = "https://natbailie-bentara-backend.hf.space";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,19 +20,13 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    // --- STRICT PRODUCTION GUARD ---
-    if (!API_BASE_URL || API_BASE_URL.includes("localhost") || API_BASE_URL.includes("127.0.0.1")) {
-      setLoading(false);
-      setError("Critical Configuration Error: The application is incorrectly trying to use a local server. Please redeploy on Vercel without the build cache.");
-      return;
-    }
-
     try {
       const formData = new URLSearchParams();
       formData.append("username", identifier);
       formData.append("password", password);
 
-      const tokenRes = await fetch(`${API_BASE_URL}/token`, {
+      // FORCE: Hard-coded string bypasses all environment variable issues
+      const tokenRes = await fetch(`${BACKEND_URL}/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
@@ -45,8 +41,8 @@ export default function LoginPage() {
       const token = tokenData.access_token;
       localStorage.setItem("access_token", token);
 
-      // STEP 2: Fetch User Profile (Points to /users/me)
-      const userRes = await fetch(`${API_BASE_URL}/users/me`, {
+      // FORCE: Hard-coded string for profile fetch
+      const userRes = await fetch(`${BACKEND_URL}/users/me`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -55,20 +51,19 @@ export default function LoginPage() {
       });
 
       if (!userRes.ok) {
-        throw new Error("Login succeeded, but the server does not have the /users/me profile route.");
+        throw new Error("Login successful, but profile could not be loaded.");
       }
 
       const userData = await userRes.json();
       localStorage.setItem("user_details", JSON.stringify(userData));
 
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 100);
+      // Redirect to dashboard
+      router.push('/dashboard');
 
     } catch (err: any) {
       console.error("Login Error:", err);
       setError(err.message === "Failed to fetch"
-          ? "Network Error: Could not connect to Hugging Face. Ensure the Space status is 'Running'."
+          ? "Network Error: The browser cannot reach the Hugging Face server."
           : err.message || "An unexpected error occurred.");
       setLoading(false);
     }
@@ -77,6 +72,8 @@ export default function LoginPage() {
   return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row">
+
+          {/* LEFT PANEL */}
           <div className="bg-slate-900 p-10 md:w-1/2 text-white flex flex-col justify-between relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
             <div className="relative z-10">
@@ -99,10 +96,11 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* RIGHT PANEL */}
           <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-slate-900">Sign In</h2>
-              <p className="text-slate-500 mt-1">Enter your credentials to access the lab.</p>
+              <p className="text-slate-500 mt-1">Directly connected to: {BACKEND_URL}</p>
             </div>
 
             {error && (
