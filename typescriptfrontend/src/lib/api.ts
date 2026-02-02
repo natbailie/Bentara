@@ -1,17 +1,15 @@
 import axios from 'axios';
 
 /**
- * 1. Strict API URL Logic
- * Fallback to localhost has been removed to prevent connection errors in production.
+ * HARD-LOCKED API URL
+ * We are bypassing process.env to ensure the browser cannot
+ * fall back to localhost.
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL as string;
+export const API_BASE_URL = 'https://natbailie-bentara-backend.hf.space';
 
+// This will confirm the lock in your browser console (F12)
 if (typeof window !== 'undefined') {
-    if (!API_BASE_URL) {
-        console.error("FATAL CONFIG ERROR: NEXT_PUBLIC_API_URL is undefined. The app cannot connect to the backend.");
-    } else {
-        console.log("Bentara API Instance strictly locked to:", API_BASE_URL);
-    }
+    console.log("CRITICAL: Bentara API Instance is hard-locked to:", API_BASE_URL);
 }
 
 const api = axios.create({
@@ -21,7 +19,9 @@ const api = axios.create({
     }
 });
 
-// 2. Auth Interceptor: Automatically attaches Bearer token from localStorage
+/**
+ * Auth Interceptor: Automatically attaches Bearer token from localStorage
+ */
 api.interceptors.request.use((config) => {
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('access_token');
@@ -34,6 +34,9 @@ api.interceptors.request.use((config) => {
     return Promise.reject(error);
 });
 
+/**
+ * Helper to build full URLs for images/static files
+ */
 export const getFileUrl = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
@@ -43,7 +46,7 @@ export const getFileUrl = (path: string) => {
 
 export const UserService = {
     register: (data: any) => api.post('/register', data),
-    // Updated to use the profile endpoint required for dashboard access
+    // Point to /users/me which is the standard profile check
     getProfile: () => api.get('/users/me'),
     updateProfile: (data: any) => api.put('/users/update', data),
     getConsultants: () => api.get('/users/consultants'),
