@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
-// IMPORT the dynamic URL helper
+// Import the dynamic URL helper to replace hardcoded localhost
 import { API_BASE_URL } from '@/lib/api';
 
 export default function LoginPage() {
@@ -18,6 +18,8 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    console.log("Attempting login to:", `${API_BASE_URL}/token`);
 
     try {
       // STEP 1: Get Access Token
@@ -43,10 +45,13 @@ export default function LoginPage() {
       // Save Token immediately
       localStorage.setItem("access_token", token);
 
-      // STEP 2: Fetch User Details
+      // STEP 2: Fetch User Details using the dynamic URL
       const userRes = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
 
       if (!userRes.ok) {
@@ -63,10 +68,10 @@ export default function LoginPage() {
       }, 100);
 
     } catch (err: any) {
-      console.error("Login Error:", err);
-      // Detailed error message to help you debug
+      console.error("Login Error Details:", err);
+      // Detailed error message to distinguish between network failure and wrong credentials
       setError(err.message === "Failed to fetch"
-          ? "Cannot reach the secure server. Ensure the backend is 'Running' on Hugging Face."
+          ? "Network Error: Cannot reach the backend. Ensure Hugging Face Space is 'Running'."
           : err.message || "An unexpected error occurred.");
       setLoading(false);
       localStorage.removeItem("access_token");
@@ -92,12 +97,12 @@ export default function LoginPage() {
                   />
                 </div>
                 <div>
-                  <span className="text-3xl font-bold tracking-tight block leading-none mb-1">BENTARA</span>
+                  <span className="text-3xl font-bold tracking-tight block leading-none mb-1 text-white">BENTARA</span>
                   <span className="text-sm text-blue-400 font-mono tracking-widest uppercase">Clinical AI</span>
                 </div>
               </div>
 
-              <h1 className="text-4xl font-bold leading-tight mb-4">
+              <h1 className="text-4xl font-bold leading-tight mb-4 text-white">
                 Intelligent <span className="text-blue-400">Haematology</span> Diagnostics.
               </h1>
               <p className="text-slate-400 text-lg leading-relaxed">
