@@ -16,6 +16,10 @@ from collections import Counter
 
 app = FastAPI()
 
+@app.get("/")
+def read_root():
+    return {"status": "Bentara AI Backend is Running"}
+
 # --- CONFIGURATION (OPTIMIZED FOR HUGGING FACE) ---
 # Persistent storage is not available in basic Spaces; use /tmp for session-based writing
 UPLOAD_DIR = "/tmp/uploads"
