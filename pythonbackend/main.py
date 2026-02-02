@@ -16,6 +16,12 @@ from collections import Counter
 
 app = FastAPI()
 
+# --- MISSING ENDPOINT: REQUIRED FOR LOGIN FLOW ---
+@app.get("/users/me")
+async def read_users_me(current_user: dict = Depends(get_current_user)):
+    """Returns current user profile; required for dashboard access."""
+    return current_user
+
 @app.get("/")
 def read_root():
     return {"status": "Bentara AI Backend is Running"}
