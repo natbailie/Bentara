@@ -16,18 +16,8 @@ from collections import Counter
 
 app = FastAPI()
 
-# --- MISSING ENDPOINT: REQUIRED FOR LOGIN FLOW ---
-@app.get("/users/me")
-async def read_users_me(current_user: dict = Depends(get_current_user)):
-    """Returns current user profile; required for dashboard access."""
-    return current_user
-
-@app.get("/")
-def read_root():
-    return {"status": "Bentara AI Backend is Running"}
-
-# --- CONFIGURATION (OPTIMIZED FOR HUGGING FACE) ---
-# Persistent storage is not available in basic Spaces; use /tmp for session-based writing
+# --- CLOUD CONFIGURATION ---
+# Using /tmp ensures write access in ephemeral cloud environments like Hugging Face
 UPLOAD_DIR = "/tmp/uploads"
 DATASET_DIR = "/tmp/dataset"
 DB_NAME = "/tmp/bentara.db"
@@ -43,7 +33,6 @@ CLASS_MAP = {
 }
 
 # --- LOAD MODELS ---
-# Looks specifically in the 'models/' folder you created
 MODEL_FILES = ["eosinophil_best.pt", "lymphocyte_best.pt", "monocyte_best.pt", "neutrophil_best.pt", "blood_cell_best.pt"]
 loaded_models = []
 
@@ -61,7 +50,7 @@ if not loaded_models:
     loaded_models.append(YOLO("yolov8n.pt"))
 
 # --- CORS SETTINGS ---
-# Mandatory for allowing your Vercel frontend to communicate with this Space
+# Explicitly allowing all origins to facilitate Vercel-to-HuggingFace traffic
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -86,23 +75,6 @@ def init_db():
 
 init_db()
 
-# --- HELPER: YOLO COORDINATE CONVERSION ---
-def save_yolo_label(base_filename, annotations_json):
-    label_path = os.path.join(DATASET_DIR, "labels", f"{base_filename}.txt")
-    try:
-        parsed = json.loads(annotations_json)
-        cells = parsed.get("cells", []) if isinstance(parsed, dict) else parsed
-        with open(label_path, "w") as f:
-            for cell in cells:
-                label_name = cell["label"].split(":")[0].strip()
-                class_id = CLASS_MAP.get(label_name, 0)
-                w, h = cell["w"] / 100, cell["h"] / 100
-                x_center = (cell["x"] / 100) + (w / 2)
-                y_center = (cell["y"] / 100) + (h / 2)
-                f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}\n")
-    except Exception as e:
-        print(f"❌ Failed to generate YOLO label: {e}")
-
 # --- PYDANTIC MODELS ---
 class RegisterRequest(BaseModel):
     username: str
@@ -120,31 +92,38 @@ class PatientRequest(BaseModel):
     gender: str
     history: str = ""
 
-class UpdateProfileRequest(BaseModel):
-    full_name: str
-    email: str
-    role: str
-    license_id: str
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
-
-# --- DEPENDENCIES ---
+# --- AUTH DEPENDENCY ---
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT username, full_name, email, role, license_id, id FROM users WHERE username = ?", (token,))
     user = cursor.fetchone()
     conn.close()
-    if not user: raise HTTPException(status_code=401, detail="Invalid session")
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
     return {"username": user[0], "full_name": user[1], "email": user[2], "role": user[3], "license_id": user[4], "id": user[5]}
 
-# --- ENDPOINTS ---
+# --- CORE ENDPOINTS ---
 
 @app.get("/")
 def read_root():
-    return {"status": "Bentara AI Backend is Running", "models": len(loaded_models)}
+    return {"status": "Bentara AI Backend is Running", "environment": "Cloud", "models_active": len(loaded_models)}
+
+@app.get("/users/me")
+async def read_users_me(current_user: dict = Depends(get_current_user)):
+    """Required profile bridge for the cloud login flow to verify credentials"""
+    return current_user
+
+@app.post("/token")
+def login(username: str = Form(...), password: str = Form(...)):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?", (username, username, password))
+    user = cursor.fetchone()
+    conn.close()
+    if user:
+        return {"access_token": user[1], "token_type": "bearer", "user": {"username": user[1], "full_name": user[4], "role": user[5]}}
+    raise HTTPException(status_code=400, detail="Invalid credentials")
 
 @app.post("/register")
 def register_user(user: RegisterRequest):
@@ -159,16 +138,6 @@ def register_user(user: RegisterRequest):
     finally:
         conn.close()
     return {"message": "Success"}
-
-@app.post("/token")
-def login(username: str = Form(...), password: str = Form(...)):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?", (username, username, password))
-    user = cursor.fetchone()
-    conn.close()
-    if user: return {"access_token": user[1], "token_type": "bearer", "user": {"username": user[1], "full_name": user[4], "role": user[5]}}
-    raise HTTPException(status_code=400, detail="Invalid credentials")
 
 @app.get("/dashboard/stats")
 def get_stats():
@@ -215,7 +184,8 @@ async def upload_slide(file: UploadFile = File(...), patient_id: int = Form(...)
     cursor = conn.cursor()
     cursor.execute("SELECT username FROM users WHERE username = ? OR license_id = ?", (assigned_to_id, assigned_to_id))
     consultant = cursor.fetchone()
-    if not consultant: raise HTTPException(status_code=400, detail="Consultant not found")
+    if not consultant:
+        raise HTTPException(status_code=400, detail="Consultant not found")
 
     filename = f"{uuid.uuid4()}.jpg"
     file_path = os.path.join(UPLOAD_DIR, filename)
@@ -252,41 +222,9 @@ def get_pending_reports(user: dict = Depends(get_current_user)):
     conn.close()
     return [{"id": r[0], "patient_name": r[1], "patient_mrn": r[2], "date": r[3], "diagnosis": r[4], "confidence": r[5], "assigned_to": r[6], "image_url": r[7]} for r in rows]
 
-@app.get("/reports/{report_id}")
-def get_single_report(report_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT r.*, p.name, p.mrn, p.dob FROM reports r JOIN patients p ON r.patient_id = p.id WHERE r.id = ?", (report_id,))
-    row = cursor.fetchone()
-    if not row: conn.close(); raise HTTPException(status_code=404)
-    cursor.execute("SELECT action, performed_by, timestamp, details FROM audit_logs WHERE report_id = ?", (report_id,))
-    logs = cursor.fetchall()
-    conn.close()
-    return {"id": row[0], "diagnosis": row[4], "image_url": row[3], "detections": json.loads(row[11]) if row[11] else [], "audit_trail": [{"action": l[0], "user": l[1], "time": l[2], "details": l[3]} for l in logs]}
-
-@app.post("/research/upload")
-async def upload_research_sample(file: UploadFile = File(...), sample_type: str = Form(...), notes: str = Form(""), annotations: str = Form(...), user: dict = Depends(get_current_user)):
-    jpg_filename = f"research_{uuid.uuid4()}.jpg"
-    try:
-        contents = await file.read()
-        temp_path = os.path.join(UPLOAD_DIR, file.filename)
-        with open(temp_path, "wb") as f: f.write(contents)
-        with Image.open(temp_path) as img:
-            img.convert('RGB').save(os.path.join(DATASET_DIR, "images", jpg_filename), "JPEG", quality=95)
-            img.convert('RGB').save(os.path.join(UPLOAD_DIR, jpg_filename), "JPEG")
-        os.remove(temp_path)
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
-    save_yolo_label(jpg_filename.replace(".jpg", ""), annotations)
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO research_samples (contributor_id, sample_type, image_url, annotations, notes, date) VALUES (?, ?, ?, ?, ?, datetime('now'))", (user['id'], sample_type, f"/uploads/{jpg_filename}", annotations, notes))
-    conn.commit()
-    conn.close()
-    return {"message": "Success"}
-
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 if __name__ == "__main__":
     import uvicorn
+    # 7860 is the specific port for Hugging Face Spaces
     uvicorn.run(app, host="0.0.0.0", port=7860)
