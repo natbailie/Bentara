@@ -2,11 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
-
-// Hard-coded target to prevent any local fallbacks
-const BACKEND_URL = "https://natbailie-bentara-backend.hf.space";
+import { LogIn, Loader2, AlertCircle } from 'lucide-react';
+import api, { UserService } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,134 +22,67 @@ export default function LoginPage() {
       formData.append("username", identifier);
       formData.append("password", password);
 
-      // FORCE: Hard-coded string bypasses all environment variable issues
-      const tokenRes = await fetch(`${BACKEND_URL}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData,
+      // Phase 1: Authentication using dynamic API instance
+      const tokenRes = await api.post('/token', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
 
-      if (!tokenRes.ok) {
-        const errData = await tokenRes.json().catch(() => ({}));
-        throw new Error(errData.detail || "Invalid credentials. Please check your ID/Email and password.");
-      }
-
-      const tokenData = await tokenRes.json();
-      const token = tokenData.access_token;
+      const token = tokenRes.data.access_token;
       localStorage.setItem("access_token", token);
 
-      // FORCE: Hard-coded string for profile fetch
-      const userRes = await fetch(`${BACKEND_URL}/users/me`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Phase 2: Session Sync
+      // Verifies connection and retrieves profile for dashboard
+      const userRes = await UserService.getProfile();
+      localStorage.setItem("user_details", JSON.stringify(userRes.data));
 
-      if (!userRes.ok) {
-        throw new Error("Login successful, but profile could not be loaded.");
-      }
-
-      const userData = await userRes.json();
-      localStorage.setItem("user_details", JSON.stringify(userData));
-
-      // Redirect to dashboard
       router.push('/dashboard');
 
     } catch (err: any) {
-      console.error("Login Error:", err);
-      setError(err.message === "Failed to fetch"
-          ? "Network Error: The browser cannot reach the Hugging Face server."
-          : err.message || "An unexpected error occurred.");
+      console.error("System Error:", err);
+      setError(err.response?.data?.detail || "Connection failure. Check if backend is active.");
       setLoading(false);
     }
   };
 
   return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row">
-
-          {/* LEFT PANEL */}
-          <div className="bg-slate-900 p-10 md:w-1/2 text-white flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
-            <div className="relative z-10">
-              <div className="flex flex-col items-center gap-6 mb-10 w-full text-center">
-                <div className="w-64 h-64 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden p-2">
-                  <img src="/bentaralogo.jpg" alt="Bentara Logo" className="w-full h-full object-contain" />
-                </div>
-                <div>
-                  <span className="text-3xl font-bold tracking-tight block leading-none mb-1 text-white">BENTARA</span>
-                  <span className="text-sm text-blue-400 font-mono tracking-widest uppercase">Clinical AI</span>
-                </div>
-              </div>
-              <h1 className="text-4xl font-bold leading-tight mb-4 text-white">
-                Intelligent <span className="text-blue-400">Haematology</span> Diagnostics.
-              </h1>
-              <p className="text-slate-400 text-lg leading-relaxed">Secure access for authorized medical personnel only.</p>
-            </div>
-            <div className="relative z-10 mt-12 pt-8 border-t border-slate-800">
-              <p className="text-xs text-slate-500 font-mono">System Version v1.0.0 (Stable)</p>
-            </div>
+        <div className="bg-white rounded-3xl p-10 w-full max-w-md shadow-xl">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-900">Bentara Portal</h1>
+            <p className="text-slate-500 mt-2">Authorized Personnel Only</p>
           </div>
 
-          {/* RIGHT PANEL */}
-          <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-900">Sign In</h2>
-              <p className="text-slate-500 mt-1">Directly connected to: {BACKEND_URL}</p>
-            </div>
-
-            {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl flex items-start gap-3">
-                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                  <span className="font-medium">{error}</span>
-                </div>
-            )}
-
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Login ID / Email</label>
-                <input
-                    required
-                    type="text"
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-900 placeholder:text-slate-400"
-                    placeholder="6-digit ID or email"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                />
+          {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl flex gap-3 animate-pulse">
+                <AlertCircle size={20} className="shrink-0" />
+                <span className="text-sm font-medium">{error}</span>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
-                <input
-                    required
-                    type="password"
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-900 placeholder:text-slate-400"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex justify-center items-center gap-2 mt-4"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : <> <LogIn size={20} /> Access Dashboard</>}
-              </button>
-            </form>
+          )}
 
-            <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-              <p className="text-sm text-slate-500">
-                New here? <Link href="/user-register" className="font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all inline-flex items-center gap-1">
-                Create an account <ArrowRight size={14} />
-              </Link>
-              </p>
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Username / ID</label>
+              <input
+                  required type="text"
+                  className="w-full mt-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-black"
+                  value={identifier} onChange={(e) => setIdentifier(e.target.value)}
+              />
             </div>
-          </div>
-        </div>
-        <div className="absolute bottom-4 text-center w-full text-xs text-slate-400">
-          &copy; 2026 Bentara Clinical Systems. All rights reserved.
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Password</label>
+              <input
+                  required type="password"
+                  className="w-full mt-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-black"
+                  value={password} onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <button
+                type="submit" disabled={loading}
+                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold flex justify-center items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 mt-4"
+            >
+              {loading ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> Access Dashboard</>}
+            </button>
+          </form>
         </div>
       </div>
   );
