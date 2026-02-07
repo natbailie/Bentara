@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // Import Link
-import { LogIn, Loader2, AlertCircle, Shield, Lock, User } from 'lucide-react';
+import Link from 'next/link';
+import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+// Uses your cloud-configured API instance
 import api, { UserService } from '../lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [identifier, setIdentifier] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -19,62 +20,137 @@ export default function LoginPage() {
     setError("");
 
     try {
+      // STEP 1: Get Access Token via standard Form Data
       const formData = new URLSearchParams();
-      formData.append("username", identifier);
+      formData.append("username", username);
       formData.append("password", password);
 
       const tokenRes = await api.post('/token', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
-      localStorage.setItem("access_token", tokenRes.data.access_token);
+      const token = tokenRes.data.access_token;
+      localStorage.setItem("access_token", token);
+
+      // STEP 2: Fetch User Details using your UserService
       const userRes = await UserService.getProfile();
       localStorage.setItem("user_details", JSON.stringify(userRes.data));
-      router.push('/dashboard');
+
+      // STEP 3: Redirect to Dashboard
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 100);
+
     } catch (err: any) {
-      const serverMessage = err.response?.data?.detail;
-      setError(typeof serverMessage === 'string' ? serverMessage : "Invalid credentials.");
+      console.error("Login Error:", err);
+      // Extracts clean error message to avoid React rendering errors
+      const serverMsg = err.response?.data?.detail;
+      setError(typeof serverMsg === 'string' ? serverMsg : "Invalid credentials. Please check your ID and password.");
       setLoading(false);
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user_details");
     }
   };
 
   return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-[2rem] p-10 w-full max-w-md shadow-2xl border-t-8 border-blue-600">
-          <div className="text-center mb-10">
-            <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
-              <Shield className="text-white" size={32} />
-            </div>
-            <h1 className="text-4xl font-black text-slate-800 tracking-tight">BENTARA</h1>
-            <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-xs text-center">Clinical Diagnostic Portal</p>
-          </div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row">
 
-          {error && (
-              <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-xl flex gap-3 text-sm font-bold">
-                <AlertCircle size={20} className="shrink-0" />
-                {error}
+          {/* LEFT PANEL: BRANDING & LOGO */}
+          <div className="bg-slate-900 p-10 md:w-1/2 text-white flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
+
+            <div className="relative z-10">
+              <div className="flex flex-col items-center gap-6 mb-10 w-full text-center">
+                {/* Logo container as per your UI request */}
+                <div className="w-64 h-64 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden p-2">
+                  <img
+                      src="/bentaralogo.jpg"
+                      alt="Bentara Logo"
+                      className="w-full h-full object-contain"
+                  />
+                </div>
+                <div>
+                  <span className="text-3xl font-bold tracking-tight block leading-none mb-1">BENTARA</span>
+                  <span className="text-sm text-blue-400 font-mono tracking-widest uppercase">Clinical AI</span>
+                </div>
               </div>
-          )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="relative">
-              <User className="absolute left-4 top-4 text-slate-400" size={20} />
-              <input required placeholder="Clinician ID" className="w-full pl-12 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-black" value={identifier} onChange={e => setIdentifier(e.target.value)} />
+              <h1 className="text-4xl font-bold leading-tight mb-4">
+                Intelligent <span className="text-blue-400">Haematology</span> Diagnostics.
+              </h1>
+              <p className="text-slate-400 text-lg leading-relaxed">
+                Secure access for authorized medical personnel only.
+              </p>
             </div>
-            <div className="relative">
-              <Lock className="absolute left-4 top-4 text-slate-400" size={20} />
-              <input required type="password" placeholder="Password" className="w-full pl-12 p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-black" value={password} onChange={e => setPassword(e.target.value)} />
-            </div>
-            <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-bold flex justify-center items-center gap-2 hover:bg-blue-700 transition-all shadow-xl shadow-blue-100">
-              {loading ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> Access System</>}
-            </button>
-          </form>
 
-          <div className="mt-8 text-center border-t border-slate-100 pt-6">
-            <Link href="/register" className="text-blue-600 font-bold hover:underline text-sm uppercase tracking-widest">
-              Request New Access
-            </Link>
+            <div className="relative z-10 mt-12 pt-8 border-t border-slate-800">
+              <p className="text-xs text-slate-500 font-mono">System Version v1.0.0 (Stable)</p>
+            </div>
           </div>
+
+          {/* RIGHT PANEL: LOGIN FORM */}
+          <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
+
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-slate-900">Sign In</h2>
+              <p className="text-slate-500 mt-1">Enter your credentials to access the lab.</p>
+            </div>
+
+            {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl flex items-start gap-3">
+                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                  <span className="font-medium">{error}</span>
+                </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Login ID / Username</label>
+                <input
+                    required
+                    type="text"
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-900 placeholder:text-slate-400"
+                    placeholder="e.g. smi829"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
+                <input
+                    required
+                    type="password"
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-900 placeholder:text-slate-400"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex justify-center items-center gap-2 mt-4"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> Access Dashboard</>}
+              </button>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+              <p className="text-sm text-slate-500">
+                New here? <Link href="/register" className="font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all inline-flex items-center gap-1">
+                Create an account <ArrowRight size={14} />
+              </Link>
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        <div className="absolute bottom-4 text-center w-full text-xs text-slate-400">
+          &copy; 2026 Bentara Clinical Systems. All rights reserved.
         </div>
       </div>
   );
