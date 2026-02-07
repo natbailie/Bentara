@@ -1,13 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import Image from 'next/image'; // Improved for Vercel optimization
+import Image from 'next/image';
 import {
     Microscope, UploadCloud, Image as ImageIcon, ArrowLeft, Search, Database,
     FlaskConical, Dna, Droplets, Loader2, CheckCircle, Plus, X, Tag,
     ZoomIn, ZoomOut, Move, MousePointer2, ChevronRight, ChevronDown, Layers, Trash2,
     BookOpen, Activity, Target, Filter
 } from 'lucide-react';
+/** * FIXED IMPORTS: Using the '@' alias to ensure Vercel resolves the lib directory correctly.
+ * This handles authentication, cloud base URLs, and image pathing.
+ */
+import api from '@/lib/api';
+import { getBaseUrl } from '@/lib/config';
 
 // --- TYPES & INTERFACES ---
 interface AnnotationBox {
@@ -28,7 +33,7 @@ interface GalleryItem {
     id: number;
     sample_type: string;
     image_url: string;
-    annotations: string; // JSON string from backend
+    annotations: string;
     contributor: string;
     date: string;
     box_count: number;
@@ -137,10 +142,11 @@ export default function ResearchHub() {
     const loadGallery = async () => {
         setLoadingGallery(true);
         try {
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${baseUrl}/research/gallery?sample_type=${encodeURIComponent(selectedType)}`);
-            const d = await res.json();
-            setGalleryItems(d);
+            /** * REPLACED: Manual fetch/localhost with centralized api.get.
+             * This handles cloud URLs and auth automatically.
+             */
+            const res = await api.get(`/research/gallery?sample_type=${encodeURIComponent(selectedType)}`);
+            setGalleryItems(res.data);
         } catch (e) { console.error(e); }
         finally { setLoadingGallery(false); }
     };
@@ -177,7 +183,6 @@ export default function ResearchHub() {
         const container = containerRef.current.getBoundingClientRect();
         const imgW = imgRef.current.offsetWidth * currentZoom;
         const imgH = imgRef.current.offsetHeight * currentZoom;
-        // Fix: Use const instead of let for values that are not reassigned
         const maxX = Math.max(0, (imgW - container.width) / 2);
         const maxY = Math.max(0, (imgH - container.height) / 2);
         return { x: Math.min(Math.max(newX, -maxX), maxX), y: Math.min(Math.max(newY, -maxY), maxY) };
@@ -222,7 +227,7 @@ export default function ResearchHub() {
         if (resizeHandle && selectedIndex !== null) {
             const current = getRelCoords(e);
             const box = boxes[selectedIndex];
-            const newBox = { ...box }; // Fix: Use const
+            const newBox = { ...box };
             if (resizeHandle === 'se') { newBox.w = current.x - box.x; newBox.h = current.y - box.y; }
             else if (resizeHandle === 'sw') { newBox.w = (box.x + box.w) - current.x; newBox.h = current.y - box.y; newBox.x = current.x; }
             else if (resizeHandle === 'nw') { newBox.w = (box.x + box.w) - current.x; newBox.h = (box.y + box.h) - current.y; newBox.x = current.x; newBox.y = current.y; }
@@ -277,16 +282,11 @@ export default function ResearchHub() {
         }));
 
         try {
-            const token = localStorage.getItem("access_token");
-            const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${baseUrl}/research/upload`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            if (res.ok) {
-                setShowSuccessModal(true);
-            }
+            /** * REPLACED: Manual fetch logic with centralized api.post.
+             * This automatically adds your Bearer token and uses the cloud URL.
+             */
+            await api.post('/research/upload', formData);
+            setShowSuccessModal(true);
         } catch (e) { console.error(e); }
         finally { setUploading(false); }
     };
@@ -354,7 +354,7 @@ export default function ResearchHub() {
         });
 
         return (
-            <div className="animate-in fade-in max-w-6xl mx-auto px-6 pt-6 pb-20">
+            <div className="animate-in fade-in max-w-6xl mx-auto px-6 pt-6 pb-20 text-black">
                 <div className="flex items-center justify-between mb-8">
                     <button onClick={() => setStep(1)} className="flex items-center gap-2 text-slate-400 font-bold hover:text-slate-600 transition-colors"><ArrowLeft size={20} /> Back</button>
                     <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
@@ -380,12 +380,12 @@ export default function ResearchHub() {
                         {filteredItems.map((item) => {
                             let slideDiagnosis = "Unspecified";
                             try { slideDiagnosis = JSON.parse(item.annotations).diagnosis || "Unspecified"; } catch (e) { }
-                            const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
                             return (
                                 <div key={item.id} onClick={() => setViewingSample(item)} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all group">
                                     <div className="h-48 bg-slate-100 relative overflow-hidden">
                                         <Image
-                                            src={`${baseUrl}${item.image_url}`}
+                                            /** FIXED: Uses getBaseUrl() utility to load clinical slides from cloud. */
+                                            src={`${getBaseUrl()}${item.image_url}`}
                                             alt="Cell Slide"
                                             fill
                                             className="object-cover group-hover:scale-105 transition-transform duration-500"
@@ -403,7 +403,7 @@ export default function ResearchHub() {
                 )}
 
                 {viewingSample && (
-                    <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-6">
+                    <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-6 text-black">
                         <div className="bg-white w-full max-w-6xl h-full max-h-[90vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in duration-300">
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
                                 <div>
@@ -415,7 +415,12 @@ export default function ResearchHub() {
                             <div className="flex-1 flex overflow-hidden">
                                 <div className="flex-1 bg-slate-950 relative flex items-center justify-center overflow-hidden">
                                     <div className="relative">
-                                        <img src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${viewingSample.image_url}`} className="max-h-[75vh] object-contain" alt="Microscope view" />
+                                        <img
+                                            /** FIXED: Replaced manual URL with config utility. */
+                                            src={`${getBaseUrl()}${viewingSample.image_url}`}
+                                            className="max-h-[75vh] object-contain"
+                                            alt="Microscope view"
+                                        />
                                         {JSON.parse(viewingSample.annotations).cells.map((box: AnnotationBox, idx: number) => (
                                             <div key={idx} className="absolute border-2 border-emerald-400 bg-emerald-400/10 pointer-events-none" style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}>
                                                 <div className="absolute -top-5 left-0 bg-emerald-500 text-white text-[9px] px-1 rounded font-bold whitespace-nowrap">{box.label}</div>
@@ -429,7 +434,6 @@ export default function ResearchHub() {
                                         <div className="p-4 bg-white rounded-xl border border-slate-200"><p className="text-xs font-bold text-slate-500 mb-1">Specimen</p><p className="text-sm font-bold">{viewingSample.sample_type}</p></div>
                                         <div className="p-4 bg-white rounded-xl border border-slate-200">
                                             <p className="text-xs font-bold text-slate-500 mb-1">Notes</p>
-                                            {/* Fix: Escaped raw quotes */}
                                             <p className="text-xs text-slate-700 italic">&quot;{viewingSample.annotations || 'N/A'}&quot;</p>
                                         </div>
                                     </div>
@@ -514,7 +518,7 @@ export default function ResearchHub() {
                             )}
                         </div>
 
-                        <div className="w-80 bg-white border-l border-slate-200 flex flex-col shadow-lg overflow-y-auto">
+                        <div className="w-80 bg-white border-l border-slate-200 flex flex-col shadow-lg overflow-y-auto text-black">
                             <div className="p-4 border-b border-slate-100 bg-slate-50">
                                 <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2"><Target size={14} className="text-red-500" /> Slide Classification</h3>
                                 <button onClick={() => setIsChoosingDisease(true)} className="w-full p-4 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-sm hover:border-blue-400 group transition-all text-left">
@@ -538,9 +542,8 @@ export default function ResearchHub() {
                                 </div>
                             </div>
                             <div className="p-4 border-t border-slate-100 bg-slate-50">
-                                {/* Fix: Escaped raw quotes for "Researcher's Notes" */}
                                 <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block tracking-widest">Researcher&apos;s Notes</label>
-                                <textarea className="w-full p-3 text-xs border border-slate-200 rounded-xl h-24 resize-none outline-none focus:ring-2 focus:ring-blue-500" placeholder="Optional context..." value={notes} onChange={e => setNotes(e.target.value)} />
+                                <textarea className="w-full p-3 text-xs border border-slate-200 rounded-xl h-24 resize-none outline-none focus:ring-2 focus:ring-blue-500 text-black" placeholder="Optional context..." value={notes} onChange={e => setNotes(e.target.value)} />
                             </div>
                         </div>
                     </div>
@@ -549,7 +552,7 @@ export default function ResearchHub() {
 
             {showSuccessModal && (
                 <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-300">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-300 text-black">
                         <div className="p-8 text-center">
                             <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={48} /></div>
                             <h2 className="text-2xl font-bold text-slate-900 mb-2">Contribution Sent</h2>
@@ -562,7 +565,7 @@ export default function ResearchHub() {
 
             {isChoosingDisease && (
                 <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200 text-black">
                         <div className="bg-slate-900 p-4 text-white font-bold flex justify-between items-center tracking-wide">Select Slide Diagnosis <button onClick={() => { setIsChoosingDisease(false); setDiseaseCategory(null); }} className="hover:text-red-400 transition-colors"><X size={20} /></button></div>
                         <div className="p-2 h-[400px] overflow-y-auto custom-scrollbar">
                             {!diseaseCategory ? (
@@ -596,7 +599,7 @@ export default function ResearchHub() {
 
             {isLabeling && (
                 <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200 text-black">
                         <div className="bg-slate-900 p-4 text-white font-bold flex justify-between items-center tracking-wide">Label Cell <button onClick={() => setIsLabeling(false)} className="hover:text-red-400 transition-colors"><X size={20} /></button></div>
                         <div className="p-2 h-[400px] overflow-y-auto custom-scrollbar">
                             {!selectedCategory ? (
