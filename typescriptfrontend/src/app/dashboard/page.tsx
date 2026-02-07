@@ -10,8 +10,11 @@ import {
     ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
-// Path adjusted for src/app/dashboard to src/lib/api
-import api from '../lib/api';
+/**
+ * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
+ * This is the standard Next.js way to avoid "Module not found" errors in nested routes.
+ */
+import api from '@/lib/api';
 
 export default function DashboardPage() {
     const [user, setUser] = useState<{ full_name: string; role: string } | null>(null);
@@ -26,6 +29,7 @@ export default function DashboardPage() {
                 setUser(JSON.parse(storedUser));
             } catch (e) {
                 console.error("Corrupted dashboard user data");
+                // If data is bad, we don't crash, we just ignore it
                 localStorage.removeItem("user_details");
             }
         }
@@ -33,9 +37,13 @@ export default function DashboardPage() {
         // 2. Fetch Dashboard Stats
         const fetchStats = async () => {
             try {
-                // REPLACED: fetch('http://localhost:8000/...') with api.get('/...')
-                // This automatically uses the cloud URL and adds your token
+                /**
+                 * REPLACED: fetch('http://localhost:8000/...') with api.get('/...')
+                 * This automatically uses the cloud URL and adds your authorization token.
+                 */
                 const res = await api.get('/dashboard/stats');
+
+                // Axios (api.ts) stores the response data in the .data property
                 setStats(res.data);
             } catch (e) {
                 console.error("Stats error", e);
@@ -72,6 +80,7 @@ export default function DashboardPage() {
             {/* QUICK STATS ROW */}
             <div className="bg-slate-900 rounded-2xl p-8 text-white flex flex-col md:flex-row justify-around items-center gap-8 shadow-2xl">
 
+                {/* LINKED: Pending Reviews Card */}
                 <Link href="/dashboard/reviews" className="text-center group cursor-pointer">
                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1 group-hover:text-blue-400 transition-colors">Pending Reviews</p>
                     <p className="text-4xl font-bold text-blue-400 group-hover:scale-110 transition-transform">{loading ? '-' : stats.pending_reports}</p>
@@ -92,9 +101,10 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* NAVIGATION OPTIONS */}
+            {/* --- NAVIGATION OPTIONS --- */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
+                {/* OPTION 1: REGISTER */}
                 <Link href="/dashboard/register" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-300 transition-all cursor-pointer relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative z-10">
@@ -109,6 +119,7 @@ export default function DashboardPage() {
                     </div>
                 </Link>
 
+                {/* OPTION 2: UPLOAD */}
                 <Link href="/dashboard/upload" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all cursor-pointer relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative z-10">
@@ -123,6 +134,7 @@ export default function DashboardPage() {
                     </div>
                 </Link>
 
+                {/* OPTION 3: DIRECTORY */}
                 <Link href="/dashboard/patients" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-emerald-300 transition-all cursor-pointer relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative z-10">
@@ -137,6 +149,7 @@ export default function DashboardPage() {
                     </div>
                 </Link>
 
+                {/* OPTION 4: RESEARCH */}
                 <Link href="/dashboard/research" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-purple-300 transition-all cursor-pointer relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative z-10">
