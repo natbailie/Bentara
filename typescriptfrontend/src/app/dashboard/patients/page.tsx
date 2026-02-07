@@ -12,8 +12,11 @@ import {
     Loader2,
     RefreshCw
 } from 'lucide-react';
-// FIXED PATH: Up two levels from /patients/ to /src/ to find /lib/
-import api from '../../lib/api';
+/**
+ * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
+ * This resolves the "Module not found" errors during Vercel deployment.
+ */
+import api from '@/lib/api';
 
 export default function PatientDirectory() {
     const router = useRouter();
@@ -24,8 +27,10 @@ export default function PatientDirectory() {
     const fetchPatients = async () => {
         setLoading(true);
         try {
-            // REPLACED: fetch('http://localhost:8000/...') with api.get('/...')
-            // This handles the Cloud Base URL and Auth token automatically
+            /**
+             * REPLACED: fetch('http://localhost:8000/...') with api.get('/...')
+             * This handles the Cloud Base URL and Auth token automatically.
+             */
             const res = await api.get('/patients');
 
             // Axios automatically parses JSON and puts it in the .data property
