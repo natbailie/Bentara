@@ -14,6 +14,10 @@ import {
     UserCheck,
     FileBadge
 } from 'lucide-react';
+/** * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
+ * This handles cloud URLs and authentication tokens automatically.
+ */
+import api from '@/lib/api';
 
 export default function PatientUploadPage() {
     const params = useParams();
@@ -34,11 +38,23 @@ export default function PatientUploadPage() {
     const [error, setError] = useState("");
     const [successReportId, setSuccessReportId] = useState<number | null>(null);
 
+    // 1. Fetch Patient Details
     useEffect(() => {
-        fetch(`http://localhost:8000/patients/${params.id}`)
-            .then(res => res.json())
-            .then(data => { setPatient(data); setLoadingPatient(false); })
-            .catch(() => setLoadingPatient(false));
+        const fetchPatient = async () => {
+            try {
+                /** * REPLACED: fetch(`http://localhost:8000/patients/${params.id}`) with api.get
+                 * This automatically uses the cloud URL and adds your authorization token.
+                 */
+                const res = await api.get(`/patients/${params.id}`);
+                setPatient(res.data);
+            } catch (err) {
+                console.error("Error loading patient:", err);
+            } finally {
+                setLoadingPatient(false);
+            }
+        };
+
+        if (params.id) fetchPatient();
     }, [params.id]);
 
     const handleUpload = async (e: React.FormEvent) => {
@@ -49,48 +65,47 @@ export default function PatientUploadPage() {
         setError("");
 
         try {
-            const token = localStorage.getItem("access_token");
             const formData = new FormData();
             formData.append("file", file);
             formData.append("patient_id", patient.id);
             formData.append("sample_type", sampleType);
             formData.append("sample_date", sampleDate);
-            formData.append("assigned_to_id", consultantId);
+            // Only append consultant ID if user entered one
+            if (consultantId) formData.append("assigned_to_id", consultantId);
             formData.append("notes", notes);
 
-            const res = await fetch('http://localhost:8000/upload', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || "Upload failed");
+            /** * REPLACED: Manual fetch to localhost with api.post
+             * Axios automatically sets the Content-Type to multipart/form-data
+             * and attaches the Bearer token.
+             */
+            const res = await api.post('/upload', formData);
 
             // SUCCESS: Show success screen
-            setSuccessReportId(data.report_id);
+            setSuccessReportId(res.data.report_id);
 
         } catch (err: any) {
-            setError(err.message);
+            console.error("Upload error:", err);
+            const serverMsg = err.response?.data?.detail;
+            setError(typeof serverMsg === 'string' ? serverMsg : "Upload failed. Please check your connection.");
         } finally {
             setUploading(false);
         }
     };
 
-    if (loadingPatient) return <div className="p-10 text-center text-slate-400">Loading...</div>;
+    if (loadingPatient) return <div className="p-10 text-center text-slate-400 flex flex-col items-center gap-2"><Loader2 className="animate-spin" /> Loading Patient...</div>;
+    if (!patient) return <div className="p-10 text-center text-red-400 font-bold">Patient record not found.</div>;
 
     // --- SUCCESS VIEW ---
     if (successReportId) {
         return (
-            <div className="max-w-xl mx-auto text-center pt-10 animate-in zoom-in duration-300">
+            <div className="max-w-xl mx-auto text-center pt-10 animate-in zoom-in duration-300 text-black">
                 <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
                     <CheckCircle size={40} />
                 </div>
                 <h1 className="text-3xl font-bold text-slate-900 mb-2">Analysis Complete</h1>
-                <p className="text-slate-500 mb-8">The report has been generated and sent to the consultant's queue.</p>
+                <p className="text-slate-500 mb-8">The report has been generated and sent to the consultant&apos;s queue.</p>
 
                 <div className="grid grid-cols-1 gap-4">
-                    {/* UPDATED LINK: Removed target="_blank" so it opens in the same tab */}
                     <Link
                         href={`/dashboard/report/${successReportId}`}
                         className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
@@ -110,14 +125,16 @@ export default function PatientUploadPage() {
 
     // --- FORM VIEW ---
     return (
-        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-right-4 duration-500">
+        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-right-4 duration-500 text-black">
 
             <div className="mb-8 border-b border-slate-200 pb-6 flex justify-between items-end">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900">New Analysis</h1>
                     <p className="text-slate-500 mt-1">Upload sample for <span className="font-bold text-blue-600">{patient.name}</span></p>
                 </div>
-                <button onClick={() => router.back()} className="text-sm font-bold text-slate-400 hover:text-slate-600">Cancel</button>
+                <button onClick={() => router.back()} className="text-sm font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
+                    <ArrowLeft size={16} /> Cancel
+                </button>
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-8">
@@ -157,13 +174,12 @@ export default function PatientUploadPage() {
                             <UserCheck className="absolute left-3 top-3 text-blue-400" size={18} />
                             <input
                                 type="text"
-                                required
                                 className="w-full pl-10 p-3 bg-blue-50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                                 placeholder="Enter Consultant's 6-Digit ID or Login Name"
                                 value={consultantId} onChange={e => setConsultantId(e.target.value)}
                             />
                         </div>
-                        <p className="text-xs text-slate-400">The report will appear in this consultant's "Pending Reviews" queue.</p>
+                        <p className="text-xs text-slate-400">The report will appear in this consultant&apos;s &quot;Pending Reviews&quot; queue.</p>
                     </div>
 
                     {/* ROW 3: FILE */}
