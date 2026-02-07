@@ -3,6 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Clock, CheckCircle, ArrowRight, Loader2, AlertCircle, FileText } from 'lucide-react';
+/** * FIXED IMPORTS: Using the '@' alias to resolve the 'lib' directory.
+ * These handle cloud URLs and image pathing automatically.
+ */
+import api from '@/lib/api';
+import { getBaseUrl } from '@/lib/config';
 
 export default function ReviewsPage() {
     const [reports, setReports] = useState<any[]>([]);
@@ -12,32 +17,25 @@ export default function ReviewsPage() {
     useEffect(() => {
         const fetchReports = async () => {
             try {
-                // 1. Get the token (Proof of who you are)
-                const token = localStorage.getItem("access_token");
+                /** * REPLACED: Manual fetch logic with centralized api.get.
+                 * This automatically attaches your 'Authorization' Bearer token
+                 * and uses the Hugging Face Cloud URL.
+                 */
+                const res = await api.get('/reports/pending');
 
-                if (!token) {
-                    setError("You are not logged in.");
-                    setLoading(false);
-                    return;
-                }
-
-                // 2. Fetch reports with Authorization header
-                const res = await fetch('http://localhost:8000/reports/pending', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`  // <--- THIS IS THE KEY
-                    }
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    setReports(data);
-                } else {
-                    if (res.status === 401) setError("Session expired. Please login again.");
-                    else setError("Failed to load your task list.");
-                }
-            } catch (err) {
+                // Axios stores response data directly in the .data property
+                setReports(res.data);
+            } catch (err: any) {
                 console.error(err);
-                setError("Network error. Could not connect to server.");
+                /** * Extracts clean error messages from the backend response.
+                 * Handles 401 Unauthorized or general network failures.
+                 */
+                const status = err.response?.status;
+                if (status === 401) {
+                    setError("Session expired. Please login again.");
+                } else {
+                    setError("Failed to load your task list. Please check your connection.");
+                }
             } finally {
                 setLoading(false);
             }
@@ -50,21 +48,21 @@ export default function ReviewsPage() {
         return (
             <div className="p-10 flex flex-col items-center justify-center text-slate-400 gap-4 min-h-[60vh]">
                 <Loader2 className="animate-spin" size={40} />
-                <p>Loading your assigned cases...</p>
+                <p className="font-medium text-black">Loading your assigned cases...</p>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="p-8 bg-red-50 text-red-600 rounded-xl border border-red-100 flex items-center gap-3">
-                <AlertCircle /> {error}
+            <div className="p-8 bg-red-50 text-red-600 rounded-xl border border-red-100 flex items-center gap-3 animate-in fade-in">
+                <AlertCircle /> <span className="font-bold">{error}</span>
             </div>
         );
     }
 
     return (
-        <div className="max-w-5xl mx-auto animate-in fade-in duration-500">
+        <div className="max-w-5xl mx-auto animate-in fade-in duration-500 text-black">
 
             <div className="mb-8 flex items-center gap-4">
                 <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center shadow-sm">
@@ -99,7 +97,11 @@ export default function ReviewsPage() {
                             {/* Thumbnail */}
                             <div className="w-24 h-24 bg-slate-100 rounded-xl overflow-hidden shrink-0 border border-slate-100 relative">
                                 <img
-                                    src={`http://localhost:8000${report.image_url}`}
+                                    /**
+                                     * FIXED: Uses getBaseUrl() to point to the cloud storage
+                                     * instead of http://localhost:8000.
+                                     */
+                                    src={`${getBaseUrl()}${report.image_url}`}
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                     alt="Slide Sample"
                                 />
@@ -122,7 +124,7 @@ export default function ReviewsPage() {
                                     <span className="flex items-center gap-2 justify-center md:justify-start">
                                  <AlertCircle size={14} className="text-blue-400"/>
                                  AI Finding: <strong className="text-blue-600">{report.diagnosis}</strong>
-                                 <span className="text-slate-400">({report.confidence})</span>
+                                 <span className="text-slate-400 font-bold ml-1">({report.confidence})</span>
                              </span>
                                 </div>
 
