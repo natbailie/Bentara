@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+import { LogIn, Loader2, AlertCircle, ArrowRight, KeyRound } from 'lucide-react';
 /** * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
  * This resolves the "Module not found" errors seen in your Vercel logs.
  */
@@ -118,7 +118,16 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
+                  {/* ADDED: Forgot Password Link */}
+                  <Link
+                      href="/forgot-password"
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-tighter transition-colors flex items-center gap-1"
+                  >
+                    <KeyRound size={12} /> Forgot Password?
+                  </Link>
+                </div>
                 <input
                     required
                     type="password"
