@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
-// Uses your cloud-configured API instance
+// Uses your cloud-configured API instance for Vercel compatibility
 import api, { UserService } from '../lib/api';
 
 export default function LoginPage() {
@@ -43,7 +43,7 @@ export default function LoginPage() {
 
     } catch (err: any) {
       console.error("Login Error:", err);
-      // Extracts clean error message to avoid React rendering errors
+      // Extracts clean error message to avoid React rendering errors (Error #31)
       const serverMsg = err.response?.data?.detail;
       setError(typeof serverMsg === 'string' ? serverMsg : "Invalid credentials. Please check your ID and password.");
       setLoading(false);
@@ -53,7 +53,7 @@ export default function LoginPage() {
   };
 
   return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-black">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row">
 
           {/* LEFT PANEL: BRANDING & LOGO */}
@@ -62,7 +62,6 @@ export default function LoginPage() {
 
             <div className="relative z-10">
               <div className="flex flex-col items-center gap-6 mb-10 w-full text-center">
-                {/* Logo container as per your UI request */}
                 <div className="w-64 h-64 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden p-2">
                   <img
                       src="/bentaralogo.jpg"
@@ -92,13 +91,13 @@ export default function LoginPage() {
           {/* RIGHT PANEL: LOGIN FORM */}
           <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
 
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-900">Sign In</h2>
+            <div className="mb-8 text-black">
+              <h2 className="text-2xl font-bold">Sign In</h2>
               <p className="text-slate-500 mt-1">Enter your credentials to access the lab.</p>
             </div>
 
             {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl flex items-start gap-3">
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
                   <AlertCircle size={20} className="shrink-0 mt-0.5" />
                   <span className="font-medium">{error}</span>
                 </div>
@@ -140,7 +139,10 @@ export default function LoginPage() {
 
             <div className="mt-8 pt-6 border-t border-slate-100 text-center">
               <p className="text-sm text-slate-500">
-                New here? <Link href="/register" className="font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all inline-flex items-center gap-1">
+                New here? <Link
+                  href="/user-register" /* FIXED: Points exactly to your folder name */
+                  className="font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all inline-flex items-center gap-1"
+              >
                 Create an account <ArrowRight size={14} />
               </Link>
               </p>
