@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, User, ArrowRight, Loader2 } from 'lucide-react';
+/** * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
+ * This handles cloud URLs and authentication tokens automatically.
+ */
+import api from '@/lib/api';
 
 export default function UploadSearchPage() {
     const router = useRouter();
@@ -14,11 +18,13 @@ export default function UploadSearchPage() {
     useEffect(() => {
         const fetchPatients = async () => {
             try {
-                const res = await fetch('http://localhost:8000/patients');
-                if (res.ok) {
-                    const data = await res.json();
-                    setPatients(data);
-                }
+                /** * REPLACED: fetch('http://localhost:8000/patients') with api.get('/patients')
+                 * This automatically uses the cloud URL and adds your authorization token.
+                 */
+                const res = await api.get('/patients');
+
+                // Axios automatically parses JSON and puts it in the .data property
+                setPatients(res.data);
             } catch (err) {
                 console.error("Failed to load patients list");
             } finally {
@@ -37,7 +43,7 @@ export default function UploadSearchPage() {
     );
 
     return (
-        <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
+        <div className="max-w-2xl mx-auto animate-in fade-in duration-500 text-black">
 
             <div className="text-center mb-10">
                 <h1 className="text-3xl font-bold text-slate-900">Select Patient</h1>
@@ -60,7 +66,7 @@ export default function UploadSearchPage() {
                 {/* RESULTS LIST */}
                 <div className="mt-4 space-y-2">
                     {loading && (
-                        <div className="text-center py-4 text-slate-400 flex items-center justify-center gap-2">
+                        <div className="text-center py-4 text-slate-400 flex items-center justify-center gap-2 font-medium">
                             <Loader2 className="animate-spin" size={16} /> Loading directory...
                         </div>
                     )}
