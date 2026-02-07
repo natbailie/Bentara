@@ -15,6 +15,10 @@ import {
     Lock,
     KeyRound
 } from 'lucide-react';
+/** * FIXED IMPORTS: Using the '@' alias to point directly to the 'src' directory.
+ * This handles authentication headers and cloud base URLs automatically.
+ */
+import api from '@/lib/api';
 
 export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
@@ -49,15 +53,12 @@ export default function SettingsPage() {
             let data: any = {};
 
             try {
-                const token = localStorage.getItem("access_token");
-                const res = await fetch('http://localhost:8000/users/me', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (res.ok) {
-                    data = await res.json();
-                    backendSuccess = true;
-                }
+                /** * REPLACED: fetch('http://localhost:8000/users/me') with api.get('/users/me')
+                 * This automatically uses the cloud URL and adds your authorization token.
+                 */
+                const res = await api.get('/users/me');
+                data = res.data;
+                backendSuccess = true;
             } catch (err) {
                 console.warn("Backend fetch failed, checking local storage.");
             }
@@ -119,17 +120,10 @@ export default function SettingsPage() {
         };
 
         try {
-            const token = localStorage.getItem("access_token");
-            const res = await fetch('http://localhost:8000/users/update', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify(payload),
-            });
+            /** * REPLACED: Manual PUT fetch to localhost with api.put
+             */
+            await api.put('/users/update', payload);
 
-            if (!res.ok) throw new Error("Failed to update.");
             localStorage.setItem("user_details", JSON.stringify({ ...payload }));
             setMessage({ type: 'success', text: "Profile details updated successfully." });
         } catch (err) {
@@ -157,27 +151,18 @@ export default function SettingsPage() {
         setSavingPass(true);
 
         try {
-            const token = localStorage.getItem("access_token");
-            const res = await fetch('http://localhost:8000/users/change-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    current_password: passData.currentPassword,
-                    new_password: passData.newPassword
-                }),
+            /** * REPLACED: Manual POST fetch to localhost with api.post
+             */
+            await api.post('/users/change-password', {
+                current_password: passData.currentPassword,
+                new_password: passData.newPassword
             });
-
-            const data = await res.json();
-
-            if (!res.ok) throw new Error(data.detail || "Failed to change password.");
 
             setMessage({ type: 'success', text: "Password changed successfully." });
             setPassData({ currentPassword: "", newPassword: "", confirmPassword: "" }); // Reset form
         } catch (err: any) {
-            setMessage({ type: 'error', text: err.message });
+            const serverMsg = err.response?.data?.detail;
+            setMessage({ type: 'error', text: typeof serverMsg === 'string' ? serverMsg : "Failed to change password." });
         } finally {
             setSavingPass(false);
         }
@@ -186,7 +171,7 @@ export default function SettingsPage() {
     if (loading) return <div className="min-h-[50vh] flex flex-col items-center justify-center text-slate-400 gap-3"><Loader2 className="animate-spin" size={32}/><p>Loading...</p></div>;
 
     return (
-        <div className="max-w-3xl mx-auto animate-in fade-in duration-500 pb-20">
+        <div className="max-w-3xl mx-auto animate-in fade-in duration-500 pb-20 text-black">
 
             <div className="mb-8 border-b border-slate-200 pb-6">
                 <h1 className="text-3xl font-bold text-slate-900">Account Settings</h1>
@@ -200,11 +185,10 @@ export default function SettingsPage() {
                 </div>
             )}
 
-            {/* --- PROFILE FORM --- */}
+            {/* PROFILE FORM */}
             <form onSubmit={handleProfileSubmit} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6 mb-8">
                 <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2">Personal Information</h3>
 
-                {/* Name Section */}
                 <div className="grid grid-cols-4 gap-4">
                     <div className="col-span-1 space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Title</label>
@@ -235,7 +219,6 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Username (LOCKED) */}
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                             <Lock size={10} /> Username (Unchangeable)
@@ -251,7 +234,6 @@ export default function SettingsPage() {
                         </div>
                     </div>
 
-                    {/* Email */}
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
                         <div className="relative group">
@@ -266,7 +248,6 @@ export default function SettingsPage() {
                     </div>
                 </div>
 
-                {/* Role & ID */}
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Role</label>
                     <div className="relative group">
@@ -329,7 +310,7 @@ export default function SettingsPage() {
                 </div>
             </form>
 
-            {/* --- SECURITY FORM (PASSWORD) --- */}
+            {/* SECURITY FORM (PASSWORD) */}
             <form onSubmit={handlePasswordSubmit} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6">
                 <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
                     <KeyRound size={20} className="text-blue-500"/> Security & Password
@@ -341,7 +322,7 @@ export default function SettingsPage() {
                         <input
                             type="password" required
                             placeholder="Enter your current password"
-                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-black"
                             value={passData.currentPassword}
                             onChange={e => setPassData({...passData, currentPassword: e.target.value})}
                         />
@@ -353,7 +334,7 @@ export default function SettingsPage() {
                             <input
                                 type="password" required
                                 placeholder="Minimum 8 characters"
-                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-black"
                                 value={passData.newPassword}
                                 onChange={e => setPassData({...passData, newPassword: e.target.value})}
                             />
@@ -363,7 +344,7 @@ export default function SettingsPage() {
                             <input
                                 type="password" required
                                 placeholder="Re-enter new password"
-                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-black"
                                 value={passData.confirmPassword}
                                 onChange={e => setPassData({...passData, confirmPassword: e.target.value})}
                             />
