@@ -13,8 +13,11 @@ import {
     AlertCircle,
     Activity
 } from 'lucide-react';
-// FIXED PATH: Up two levels from /register/ to /src/ to find /lib/
-import api from '../../lib/api';
+/**
+ * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
+ * This is the standard Next.js way to prevent "Module not found" errors in the Vercel cloud environment.
+ */
+import api from '@/lib/api';
 
 export default function RegisterPatientPage() {
     const [loading, setLoading] = useState(false);
@@ -43,6 +46,7 @@ export default function RegisterPatientPage() {
             return;
         }
 
+        // NHS Numbers are strictly 10 digits
         if (!/^\d{10}$/.test(formData.nhs_number.replace(/\s/g, ''))) {
             setError("Invalid NHS Number: Must be exactly 10 digits.");
             setLoading(false);
@@ -50,11 +54,13 @@ export default function RegisterPatientPage() {
         }
 
         try {
-            // REPLACED: Manual fetch/localhost logic with centralized api.post
-            // This handles the Base URL, JSON headers, and Auth token automatically
-            const res = await api.post('/patients/register', formData);
+            /**
+             * REPLACED: Manual fetch/localhost logic with centralized api.post.
+             * This handles the Cloud Base URL, JSON headers, and Auth token automatically.
+             */
+            await api.post('/patients/register', formData);
 
-            // With Axios (api.ts), a successful response is in the 2xx range
+            // With Axios (api.ts), success is handled by the try block
             setSuccess(true);
             setFormData({
                 name: "",
@@ -67,7 +73,10 @@ export default function RegisterPatientPage() {
 
         } catch (err: any) {
             console.error("Registration Error:", err);
-            // Extracts the specific error message from your FastAPI backend
+            /**
+             * EXTRACTS: Specific error messages from the FastAPI backend.
+             * Checks if detail is a string to prevent "Minified React Error #31".
+             */
             const serverMessage = err.response?.data?.detail;
             setError(typeof serverMessage === 'string' ? serverMessage : "Failed to register patient.");
         } finally {
@@ -76,9 +85,9 @@ export default function RegisterPatientPage() {
     };
 
     return (
-        <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
+        <div className="max-w-4xl mx-auto animate-in fade-in duration-500 text-black">
 
-            <div className="mb-8 border-b border-slate-200 pb-6 text-black">
+            <div className="mb-8 border-b border-slate-200 pb-6">
                 <h1 className="text-3xl font-bold">Register New Patient</h1>
                 <p className="text-slate-500 mt-1">Create a secure clinical record. All mandatory fields (*) must be completed for regulatory compliance.</p>
             </div>
@@ -105,7 +114,7 @@ export default function RegisterPatientPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
 
                     {/* Full Name */}
-                    <div className="space-y-2 text-black">
+                    <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Patient Full Name <span className="text-red-500">*</span></label>
                         <div className="relative">
                             <User className="absolute left-3 top-3 text-slate-400" size={18} />
@@ -121,7 +130,7 @@ export default function RegisterPatientPage() {
                     </div>
 
                     {/* MRN */}
-                    <div className="space-y-2 text-black">
+                    <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">MRN (Hospital ID) <span className="text-red-500">*</span></label>
                         <div className="relative">
                             <Hash className="absolute left-3 top-3 text-slate-400" size={18} />
@@ -137,7 +146,7 @@ export default function RegisterPatientPage() {
                     </div>
 
                     {/* NHS Number */}
-                    <div className="space-y-2 text-black">
+                    <div className="space-y-2">
                         <label className="text-xs font-bold text-blue-600 uppercase tracking-wider">NHS Number <span className="text-red-500">*</span></label>
                         <div className="relative">
                             <Activity className="absolute left-3 top-3 text-blue-400" size={18} />
@@ -157,7 +166,7 @@ export default function RegisterPatientPage() {
                     </div>
 
                     {/* DOB */}
-                    <div className="space-y-2 text-black">
+                    <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date of Birth <span className="text-red-500">*</span></label>
                         <div className="relative">
                             <Calendar className="absolute left-3 top-3 text-slate-400" size={18} />
@@ -172,7 +181,7 @@ export default function RegisterPatientPage() {
                     </div>
 
                     {/* Gender */}
-                    <div className="space-y-2 text-black">
+                    <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gender <span className="text-red-500">*</span></label>
                         <select
                             className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900"
@@ -186,7 +195,7 @@ export default function RegisterPatientPage() {
                     </div>
 
                     {/* Medical History */}
-                    <div className="space-y-2 md:col-span-2 text-black">
+                    <div className="space-y-2 md:col-span-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical History / Relevant Notes</label>
                         <div className="relative">
                             <FileText className="absolute left-3 top-3 text-slate-400" size={18} />
@@ -206,7 +215,7 @@ export default function RegisterPatientPage() {
                 <div className="flex justify-end gap-4 border-t border-slate-100 pt-6">
                     <button
                         type="button"
-                        onClick={() => setFormData({name:"", mrn:"", nhs_number: "", dob:"", gender:"Male", history:""})}
+                        onClick={() => setFormData({name:"", mrn:"", nhs_number: "", dob:"", gender:"Male", history: ""})}
                         className="px-6 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
                     >
                         <XCircle size={20} /> Clear
