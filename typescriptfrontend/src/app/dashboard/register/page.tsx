@@ -1,77 +1,169 @@
 "use client";
 
-import { useState } from 'react';
-import { Save, XCircle, CheckCircle, Loader2, User, Calendar, FileText, Hash, AlertCircle, Activity } from 'lucide-react';
-import api from '../../../lib/api'; //
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+    Search,
+    Filter,
+    MoreVertical,
+    FileText,
+    Plus,
+    Loader2,
+    RefreshCw
+} from 'lucide-react';
+// Corrected relative path to reach lib from app/dashboard/patients/
+import api from '../../lib/api';
 
-export default function RegisterPatientPage() {
-    const [loading, setLoading] = useState(false);
-    const [success, setSuccess] = useState(false);
-    const [error, setError] = useState("");
+export default function PatientDirectory() {
+    const router = useRouter();
+    const [patients, setPatients] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState("");
 
-    const [formData, setFormData] = useState({
-        name: "", mrn: "", nhs_number: "", dob: "", gender: "Male", history: ""
-    });
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const fetchPatients = async () => {
         setLoading(true);
-        setError("");
-
-        if (!/^\d{10}$/.test(formData.nhs_number.replace(/\s/g, ''))) {
-            setError("Invalid NHS Number: Must be exactly 10 digits.");
-            setLoading(false);
-            return;
-        }
-
         try {
-            // Changed from fetch(localhost) to api.post
-            await api.post('/patients/register', formData);
-            setSuccess(true);
-            setFormData({ name: "", mrn: "", nhs_number: "", dob: "", gender: "Male", history: "" });
-        } catch (err: any) {
-            setError(err.response?.data?.detail || "Failed to register patient.");
+            // REPLACED: fetch('http://localhost:8000/...') with api.get('/...')
+            // This handles the Cloud Base URL and Auth token automatically
+            const res = await api.get('/patients');
+
+            // Axios automatically parses JSON and puts it in the .data property
+            setPatients(res.data);
+        } catch (err) {
+            console.error("Error fetching patients:", err);
         } finally {
             setLoading(false);
         }
     };
 
+    useEffect(() => {
+        fetchPatients();
+    }, []);
+
+    // Helper to convert YYYY-MM-DD to DD/MM/YYYY
+    const formatDate = (dateString: string) => {
+        if (!dateString) return "N/A";
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return dateString;
+    };
+
+    const filteredPatients = patients.filter(p =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.mrn.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
-        <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
-            <div className="mb-8 border-b border-slate-200 pb-6">
-                <h1 className="text-3xl font-bold text-slate-900">Register New Patient</h1>
-                <p className="text-slate-500 mt-1">Create a secure clinical record. All mandatory fields (*) must be completed.</p>
+        <div className="space-y-6 animate-in fade-in duration-500 text-black">
+
+            {/* HEADER */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold">Patient Directory</h1>
+                    <p className="text-slate-500 mt-1">Manage patient records and histories.</p>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        onClick={fetchPatients}
+                        className="p-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors"
+                        title="Refresh List"
+                    >
+                        <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+                    </button>
+                    <Link
+                        href="/dashboard/register"
+                        className="bg-blue-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
+                    >
+                        <Plus size={20} /> Add Patient
+                    </Link>
+                </div>
             </div>
 
-            {success && <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl flex items-center gap-3"><CheckCircle size={24} /><div><p className="font-bold">Patient Registered Successfully!</p></div></div>}
-            {error && <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl flex items-center gap-3"><AlertCircle size={24} /><p className="font-bold">{error}</p></div>}
+            {/* SEARCH BAR */}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex gap-4 items-center">
+                <Search className="text-slate-400" />
+                <input
+                    type="text"
+                    placeholder="Search by Name or MRN..."
+                    className="flex-1 outline-none text-slate-900 placeholder:text-slate-400 font-medium"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <div className="w-px h-6 bg-slate-200"></div>
+                <button className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold text-sm">
+                    <Filter size={16} /> Filters
+                </button>
+            </div>
 
-            <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Patient Full Name <span className="text-red-500">*</span></label>
-                        <div className="relative"><User className="absolute left-3 top-3 text-slate-400" size={18} /><input type="text" required className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-900" placeholder="Last Name, First Name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} /></div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">MRN (Hospital ID) <span className="text-red-500">*</span></label>
-                        <div className="relative"><Hash className="absolute left-3 top-3 text-slate-400" size={18} /><input type="text" required className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-900" placeholder="e.g. MRN-88219" value={formData.mrn} onChange={(e) => setFormData({...formData, mrn: e.target.value})} /></div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-blue-600 uppercase tracking-wider">NHS Number <span className="text-red-500">*</span></label>
-                        <div className="relative"><Activity className="absolute left-3 top-3 text-blue-400" size={18} /><input type="text" required maxLength={10} className="w-full pl-10 p-3 bg-blue-50 border border-blue-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono font-bold text-slate-900" placeholder="10 Digits" value={formData.nhs_number} onChange={(e) => setFormData({...formData, nhs_number: e.target.value.replace(/\D/g, '')})} /></div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date of Birth <span className="text-red-500">*</span></label>
-                        <div className="relative"><Calendar className="absolute left-3 top-3 text-slate-400" size={18} /><input type="date" required className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900" value={formData.dob} onChange={(e) => setFormData({...formData, dob: e.target.value})} /></div>
-                    </div>
-                    <div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gender <span className="text-red-500">*</span></label><select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900" value={formData.gender} onChange={(e) => setFormData({...formData, gender: e.target.value})}><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
-                    <div className="space-y-2 md:col-span-2"><label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clinical History / Relevant Notes</label><div className="relative"><FileText className="absolute left-3 top-3 text-slate-400" size={18} /><textarea rows={4} className="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 resize-none" placeholder="Contextual notes..." value={formData.history} onChange={(e) => setFormData({...formData, history: e.target.value})} /></div></div>
-                </div>
-                <div className="flex justify-end gap-4 border-t border-slate-100 pt-6">
-                    <button type="button" onClick={() => setFormData({name:"", mrn:"", nhs_number: "", dob:"", gender:"Male", history:""})} className="px-6 py-3 font-bold text-slate-500 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"><XCircle size={20} /> Clear</button>
-                    <button type="submit" disabled={loading} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg flex items-center gap-2 disabled:opacity-70">{loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}Save Patient Record</button>
-                </div>
-            </form>
+            {/* TABLE */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-bold">
+                        <th className="p-4 pl-6">Patient Name</th>
+                        <th className="p-4">MRN</th>
+                        <th className="p-4">Date of Birth</th>
+                        <th className="p-4">Gender</th>
+                        <th className="p-4">NHS Number</th>
+                        <th className="p-4 text-right pr-6"></th>
+                    </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+
+                    {loading ? (
+                        <tr>
+                            <td colSpan={6} className="p-8 text-center text-slate-400">
+                                <div className="flex justify-center items-center gap-2">
+                                    <Loader2 className="animate-spin" /> Loading Records...
+                                </div>
+                            </td>
+                        </tr>
+                    ) : filteredPatients.length === 0 ? (
+                        <tr>
+                            <td colSpan={6} className="p-12 text-center text-slate-400">
+                                <FileText size={48} className="mx-auto mb-3 opacity-20" />
+                                <p>No patients found.</p>
+                            </td>
+                        </tr>
+                    ) : (
+                        filteredPatients.map((patient) => (
+                            <tr
+                                key={patient.id}
+                                onClick={() => router.push(`/dashboard/patients/${patient.id}`)}
+                                className="hover:bg-slate-50 transition-colors group cursor-pointer"
+                            >
+                                <td className="p-4 pl-6 font-bold text-slate-900">{patient.name}</td>
+                                <td className="p-4 font-mono text-slate-600">
+                                    <span className="bg-slate-100 px-2 py-1 rounded-md text-xs font-bold">{patient.mrn}</span>
+                                </td>
+
+                                <td className="p-4 text-slate-600">{formatDate(patient.dob)}</td>
+
+                                <td className="p-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                            patient.gender === 'Male' ? 'bg-blue-50 text-blue-600' :
+                                patient.gender === 'Female' ? 'bg-pink-50 text-pink-600' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                            {patient.gender}
+                        </span>
+                                </td>
+                                <td className="p-4 text-slate-600 text-sm font-mono tracking-wide">
+                                    {patient.nhs_number || "N/A"}
+                                </td>
+
+                                <td className="p-4 text-right pr-6">
+                                    <MoreVertical size={20} className="text-slate-300 group-hover:text-slate-600" />
+                                </td>
+                            </tr>
+                        ))
+                    )}
+
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
