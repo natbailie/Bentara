@@ -12,7 +12,7 @@ import {
     Loader2,
     RefreshCw
 } from 'lucide-react';
-// Corrected relative path to reach lib from app/dashboard/patients/
+// FIXED PATH: Up two levels from /patients/ to /src/ to find /lib/
 import api from '../../lib/api';
 
 export default function PatientDirectory() {
