@@ -6,25 +6,70 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Calendar,
-  Hash, // Used for NHS Number
+  Hash,
   FileText,
   Microscope,
   Clock,
   CheckCircle,
   FileBadge,
-  Loader2
+  Loader2,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
-/** * FIXED IMPORTS: Using the '@' alias to resolve the 'lib' directory.
- * This handles cloud URLs and image pathing automatically.
+/** * FIXED IMPORT: ensures we use the centralized API utility
+ * that handles Cloud Auth and URLs correctly.
  */
 import api from '@/lib/api';
 import { getBaseUrl } from '@/lib/config';
 
 export default function PatientDetailsPage() {
+  // useParams() can return a string or array. We force it to string for safety.
   const params = useParams();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+
   const router = useRouter();
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // New state to capture the EXACT error message from the backend
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const fetchDetails = async () => {
+    if (!id) return;
+
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      console.log(`Fetching details for ID: ${id}`); // Debug log for browser console
+
+      /** * API CALL: Fetch specific patient by ID.
+       * The try/catch block will catch 404s and 500s.
+       */
+      const res = await api.get(`/patients/${id}`);
+      setPatient(res.data);
+    } catch (err: any) {
+      console.error("Error fetching patient details:", err);
+
+      // Extract the specific error message to show on screen
+      if (err.response) {
+        // Server responded with a status code (e.g. 404, 500)
+        setErrorMsg(`Server Error (${err.response.status}): ${err.response.data?.detail || "Unknown Backend Error"}`);
+      } else if (err.request) {
+        // Request was made but no response received
+        setErrorMsg("Network Error: No response from server. Check your connection.");
+      } else {
+        // Something else happened
+        setErrorMsg(`Client Error: ${err.message}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDetails();
+  }, [id]);
 
   // Helper to format date
   const formatDate = (dateString: string) => {
@@ -36,26 +81,6 @@ export default function PatientDetailsPage() {
     return dateString;
   };
 
-  useEffect(() => {
-    const fetchDetails = async () => {
-      try {
-        /** * REPLACED: fetch(`http://localhost:8000/...`) with api.get(`/...`)
-         * This automatically uses the cloud URL and adds your authorization token.
-         */
-        const res = await api.get(`/patients/${params.id}`);
-
-        // Axios stores response data directly in the .data property
-        setPatient(res.data);
-      } catch (err) {
-        console.error("Error fetching patient details:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (params.id) fetchDetails();
-  }, [params.id]);
-
   if (loading) {
     return (
         <div className="p-20 flex flex-col items-center justify-center text-slate-400 gap-4">
@@ -65,8 +90,31 @@ export default function PatientDetailsPage() {
     );
   }
 
-  if (!patient) return <div className="p-10 text-red-400 font-bold">Patient not found.</div>;
+  // --- ERROR VIEW ---
+  if (errorMsg || !patient) {
+    return (
+        <div className="max-w-4xl mx-auto mt-10 p-8 bg-white border border-slate-200 rounded-2xl text-center shadow-sm">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Patient Not Found</h2>
+          <p className="text-slate-500 mb-6 font-mono bg-slate-50 inline-block px-3 py-1 rounded text-sm border border-slate-100">
+            Debug Info: {errorMsg || "ID mismatch or deleted record"}
+          </p>
 
+          <div className="flex justify-center gap-4">
+            <button onClick={() => router.back()} className="px-6 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+              Go Back
+            </button>
+            <button onClick={fetchDetails} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2">
+              <RefreshCw size={18} /> Retry Connection
+            </button>
+          </div>
+        </div>
+    );
+  }
+
+  // --- MAIN CONTENT ---
   return (
       <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 text-black">
 
@@ -133,7 +181,7 @@ export default function PatientDetailsPage() {
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                   <Microscope size={16}/> Diagnostic Reports
                 </h3>
-                <Link href="/dashboard/upload" className="text-xs font-bold text-blue-600 hover:underline">
+                <Link href={`/dashboard/upload/${patient.id}`} className="text-xs font-bold text-blue-600 hover:underline">
                   + Upload New Slide
                 </Link>
               </div>
@@ -193,9 +241,7 @@ export default function PatientDetailsPage() {
               )}
             </div>
           </div>
-
         </div>
-
       </div>
   );
 }
