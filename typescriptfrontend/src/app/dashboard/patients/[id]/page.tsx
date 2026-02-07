@@ -11,8 +11,14 @@ import {
   Microscope,
   Clock,
   CheckCircle,
-  FileBadge
+  FileBadge,
+  Loader2
 } from 'lucide-react';
+/** * FIXED IMPORTS: Using the '@' alias to resolve the 'lib' directory.
+ * This handles cloud URLs and image pathing automatically.
+ */
+import api from '@/lib/api';
+import { getBaseUrl } from '@/lib/config';
 
 export default function PatientDetailsPage() {
   const params = useParams();
@@ -33,12 +39,15 @@ export default function PatientDetailsPage() {
   useEffect(() => {
     const fetchDetails = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/patients/${params.id}`);
-        if (!res.ok) throw new Error("Patient not found");
-        const data = await res.json();
-        setPatient(data);
+        /** * REPLACED: fetch(`http://localhost:8000/...`) with api.get(`/...`)
+         * This automatically uses the cloud URL and adds your authorization token.
+         */
+        const res = await api.get(`/patients/${params.id}`);
+
+        // Axios stores response data directly in the .data property
+        setPatient(res.data);
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching patient details:", err);
       } finally {
         setLoading(false);
       }
@@ -47,11 +56,19 @@ export default function PatientDetailsPage() {
     if (params.id) fetchDetails();
   }, [params.id]);
 
-  if (loading) return <div className="p-10 text-slate-400">Loading patient record...</div>;
-  if (!patient) return <div className="p-10 text-red-400">Patient not found.</div>;
+  if (loading) {
+    return (
+        <div className="p-20 flex flex-col items-center justify-center text-slate-400 gap-4">
+          <Loader2 className="animate-spin" size={40} />
+          <p className="font-medium text-black">Loading patient record...</p>
+        </div>
+    );
+  }
+
+  if (!patient) return <div className="p-10 text-red-400 font-bold">Patient not found.</div>;
 
   return (
-      <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 text-black">
 
         {/* TOP NAV */}
         <button onClick={() => router.back()} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold text-sm mb-4">
@@ -82,7 +99,7 @@ export default function PatientDetailsPage() {
               </div>
             </div>
 
-            {/* NHS NUMBER (Replaced Contact) */}
+            {/* NHS NUMBER */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
                 <Hash size={20} />
@@ -121,7 +138,7 @@ export default function PatientDetailsPage() {
                 </Link>
               </div>
 
-              {patient.reports.length === 0 ? (
+              {!patient.reports || patient.reports.length === 0 ? (
                   <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                     <p className="text-slate-400 text-sm">No slides uploaded for this patient yet.</p>
                   </div>
@@ -131,7 +148,12 @@ export default function PatientDetailsPage() {
                         <div key={report.id} className="flex gap-4 p-4 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all group bg-slate-50/50">
                           {/* Thumbnail */}
                           <div className="w-16 h-16 bg-slate-200 rounded-lg overflow-hidden shrink-0">
-                            <img src={`http://localhost:8000${report.image_url}`} className="w-full h-full object-cover" />
+                            <img
+                                /** FIXED: Uses getBaseUrl() utility to load the clinical image from the cloud. */
+                                src={`${getBaseUrl()}${report.image_url}`}
+                                className="w-full h-full object-cover"
+                                alt="Slide preview"
+                            />
                           </div>
 
                           {/* Info */}
@@ -143,7 +165,7 @@ export default function PatientDetailsPage() {
                               <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide flex items-center gap-1 ${
                                   report.status === 'Authorized' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
                               }`}>
-                                            {report.status === 'Authorized' ? <CheckCircle size={10}/> : <Clock size={10}/>}
+                                {report.status === 'Authorized' ? <CheckCircle size={10}/> : <Clock size={10}/>}
                                 {report.status}
                               </span>
                             </div>
