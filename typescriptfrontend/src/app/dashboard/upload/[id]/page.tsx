@@ -12,19 +12,24 @@ import {
     Calendar,
     TestTube,
     UserCheck,
-    FileBadge
+    FileBadge,
+    RefreshCw
 } from 'lucide-react';
-/** * FIXED IMPORT: Using the '@' alias points directly to the 'src' directory.
- * This handles cloud URLs and authentication tokens automatically.
+/** * FIXED IMPORT: Uses the centralized API utility.
+ * This ensures we are hitting the Cloud URL (not localhost).
  */
 import api from '@/lib/api';
 
 export default function PatientUploadPage() {
+    // Force params.id to be a string to avoid array issues
     const params = useParams();
+    const id = Array.isArray(params.id) ? params.id[0] : params.id;
+
     const router = useRouter();
 
     const [patient, setPatient] = useState<any>(null);
     const [loadingPatient, setLoadingPatient] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
     // Form State
     const [file, setFile] = useState<File | null>(null);
@@ -35,34 +40,47 @@ export default function PatientUploadPage() {
 
     // Submission State
     const [uploading, setUploading] = useState(false);
-    const [error, setError] = useState("");
+    const [submissionError, setSubmissionError] = useState("");
     const [successReportId, setSuccessReportId] = useState<number | null>(null);
 
     // 1. Fetch Patient Details
-    useEffect(() => {
-        const fetchPatient = async () => {
-            try {
-                /** * REPLACED: fetch(`http://localhost:8000/patients/${params.id}`) with api.get
-                 * This automatically uses the cloud URL and adds your authorization token.
-                 */
-                const res = await api.get(`/patients/${params.id}`);
-                setPatient(res.data);
-            } catch (err) {
-                console.error("Error loading patient:", err);
-            } finally {
-                setLoadingPatient(false);
-            }
-        };
+    const fetchPatient = async () => {
+        if (!id) return;
 
-        if (params.id) fetchPatient();
-    }, [params.id]);
+        setLoadingPatient(true);
+        setFetchError(null);
+
+        try {
+            console.log(`Attempting to fetch patient ID: ${id}`);
+
+            /** * REPLACED: fetch(`http://localhost:8000...`) with api.get
+             * This hits your live Hugging Face backend.
+             */
+            const res = await api.get(`/patients/${id}`);
+            setPatient(res.data);
+        } catch (err: any) {
+            console.error("Error loading patient:", err);
+            // Capture specific error code (e.g., 404)
+            if (err.response?.status === 404) {
+                setFetchError("404: This patient ID does not exist in the live database.");
+            } else {
+                setFetchError("Connection Failed. The backend might be sleeping.");
+            }
+        } finally {
+            setLoadingPatient(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchPatient();
+    }, [id]);
 
     const handleUpload = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!file || !patient) return;
 
         setUploading(true);
-        setError("");
+        setSubmissionError("");
 
         try {
             const formData = new FormData();
@@ -70,30 +88,63 @@ export default function PatientUploadPage() {
             formData.append("patient_id", patient.id);
             formData.append("sample_type", sampleType);
             formData.append("sample_date", sampleDate);
-            // Only append consultant ID if user entered one
             if (consultantId) formData.append("assigned_to_id", consultantId);
             formData.append("notes", notes);
 
-            /** * REPLACED: Manual fetch to localhost with api.post
-             * Axios automatically sets the Content-Type to multipart/form-data
-             * and attaches the Bearer token.
-             */
+            // Use api.post for automatic Auth headers and Cloud URL
             const res = await api.post('/upload', formData);
 
-            // SUCCESS: Show success screen
             setSuccessReportId(res.data.report_id);
 
         } catch (err: any) {
             console.error("Upload error:", err);
             const serverMsg = err.response?.data?.detail;
-            setError(typeof serverMsg === 'string' ? serverMsg : "Upload failed. Please check your connection.");
+            setSubmissionError(typeof serverMsg === 'string' ? serverMsg : "Upload failed.");
         } finally {
             setUploading(false);
         }
     };
 
-    if (loadingPatient) return <div className="p-10 text-center text-slate-400 flex flex-col items-center gap-2"><Loader2 className="animate-spin" /> Loading Patient...</div>;
-    if (!patient) return <div className="p-10 text-center text-red-400 font-bold">Patient record not found.</div>;
+    // --- LOADING VIEW ---
+    if (loadingPatient) {
+        return (
+            <div className="min-h-[50vh] flex flex-col items-center justify-center text-slate-400 gap-4">
+                <Loader2 className="animate-spin" size={40} />
+                <p>Retrieving patient record...</p>
+            </div>
+        );
+    }
+
+    // --- ERROR VIEW (The "Not Found" Fix) ---
+    if (fetchError || !patient) {
+        return (
+            <div className="max-w-2xl mx-auto mt-10 p-8 bg-white border border-slate-200 rounded-2xl text-center shadow-sm text-black">
+                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertCircle size={32} />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Patient Not Found</h2>
+                <p className="text-slate-500 mb-6">
+                    {fetchError || "The requested patient ID could not be retrieved."}
+                </p>
+                <div className="p-4 bg-slate-50 rounded-xl mb-6 text-sm text-left">
+                    <p className="font-bold text-slate-700 mb-1">Why is this happening?</p>
+                    <ul className="list-disc list-inside text-slate-500 space-y-1">
+                        <li>The backend database may have restarted and wiped its data.</li>
+                        <li>Your "Search" list might be showing cached (old) patients.</li>
+                        <li>The ID <strong>{id}</strong> no longer exists in the system.</li>
+                    </ul>
+                </div>
+                <div className="flex justify-center gap-4">
+                    <button onClick={() => router.push('/dashboard/register')} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
+                        Register New Patient
+                    </button>
+                    <button onClick={fetchPatient} className="px-6 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-2">
+                        <RefreshCw size={16} /> Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     // --- SUCCESS VIEW ---
     if (successReportId) {
@@ -201,7 +252,7 @@ export default function PatientUploadPage() {
                         </div>
                     </div>
 
-                    {error && <div className="p-4 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 font-bold"><AlertCircle/> {error}</div>}
+                    {submissionError && <div className="p-4 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 font-bold"><AlertCircle/> {submissionError}</div>}
 
                     <button disabled={!file || uploading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 disabled:opacity-50 flex justify-center items-center gap-2">
                         {uploading ? <Loader2 className="animate-spin" /> : <UploadCloud />}
