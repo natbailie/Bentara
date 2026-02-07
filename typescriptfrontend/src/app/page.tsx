@@ -1,159 +1,158 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+    Users,
+    UserPlus,
+    UploadCloud,
+    Database,
+    ArrowRight
+} from 'lucide-react';
 import Link from 'next/link';
-import { LogIn, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
-// Uses your cloud-configured API instance for Vercel compatibility
-import api, { UserService } from '../lib/api';
+// Import your centralized API instance
+import api from '../lib/api';
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+export default function DashboardPage() {
+    const [user, setUser] = useState<{ full_name: string; role: string } | null>(null);
+    const [stats, setStats] = useState({ total_patients: 0, pending_reports: 0, critical_alerts: 0 });
+    const [loading, setLoading] = useState(true);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+    useEffect(() => {
+        // 1. SAFELY Load User Info
+        const storedUser = localStorage.getItem("user_details");
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error("Corrupted dashboard user data");
+                localStorage.removeItem("user_details");
+            }
+        }
 
-    try {
-      // STEP 1: Get Access Token via standard Form Data
-      const formData = new URLSearchParams();
-      formData.append("username", username);
-      formData.append("password", password);
+        // 2. Fetch Dashboard Stats
+        const fetchStats = async () => {
+            try {
+                // REPLACED: fetch('http://localhost:8000/...') with api.get('/...')
+                // This automatically uses the cloud URL and adds your token
+                const res = await api.get('/dashboard/stats');
+                setStats(res.data);
+            } catch (e) {
+                console.error("Stats error", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchStats();
+    }, []);
 
-      const tokenRes = await api.post('/token', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
+    return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-      const token = tokenRes.data.access_token;
-      localStorage.setItem("access_token", token);
-
-      // STEP 2: Fetch User Details using your UserService
-      const userRes = await UserService.getProfile();
-      localStorage.setItem("user_details", JSON.stringify(userRes.data));
-
-      // STEP 3: Redirect to Dashboard
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 100);
-
-    } catch (err: any) {
-      console.error("Login Error:", err);
-      // Extracts clean error message to avoid React rendering errors (Error #31)
-      const serverMsg = err.response?.data?.detail;
-      setError(typeof serverMsg === 'string' ? serverMsg : "Invalid credentials. Please check your ID and password.");
-      setLoading(false);
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user_details");
-    }
-  };
-
-  return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-black">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col md:flex-row">
-
-          {/* LEFT PANEL: BRANDING & LOGO */}
-          <div className="bg-slate-900 p-10 md:w-1/2 text-white flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
-
-            <div className="relative z-10">
-              <div className="flex flex-col items-center gap-6 mb-10 w-full text-center">
-                <div className="w-64 h-64 bg-white rounded-2xl flex items-center justify-center shadow-xl overflow-hidden p-2">
-                  <img
-                      src="/bentaralogo.jpg"
-                      alt="Bentara Logo"
-                      className="w-full h-full object-contain"
-                  />
-                </div>
+            {/* HEADER */}
+            <div className="flex justify-between items-end">
                 <div>
-                  <span className="text-3xl font-bold tracking-tight block leading-none mb-1">BENTARA</span>
-                  <span className="text-sm text-blue-400 font-mono tracking-widest uppercase">Clinical AI</span>
+                    <h1 className="text-3xl font-bold text-slate-900 text-black">
+                        Welcome, {user?.full_name || 'Doctor'}
+                    </h1>
+                    <p className="text-slate-500 mt-1">Select an action to get started.</p>
                 </div>
-              </div>
-
-              <h1 className="text-4xl font-bold leading-tight mb-4">
-                Intelligent <span className="text-blue-400">Haematology</span> Diagnostics.
-              </h1>
-              <p className="text-slate-400 text-lg leading-relaxed">
-                Secure access for authorized medical personnel only.
-              </p>
-            </div>
-
-            <div className="relative z-10 mt-12 pt-8 border-t border-slate-800">
-              <p className="text-xs text-slate-500 font-mono">System Version v1.0.0 (Stable)</p>
-            </div>
-          </div>
-
-          {/* RIGHT PANEL: LOGIN FORM */}
-          <div className="p-10 md:w-1/2 flex flex-col justify-center bg-white">
-
-            <div className="mb-8 text-black">
-              <h2 className="text-2xl font-bold">Sign In</h2>
-              <p className="text-slate-500 mt-1">Enter your credentials to access the lab.</p>
-            </div>
-
-            {error && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                  <span className="font-medium">{error}</span>
+                <div className="bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">System Status</span>
+                    <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                        Online & Connected
+                    </div>
                 </div>
-            )}
-
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Login ID / Username</label>
-                <input
-                    required
-                    type="text"
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-900 placeholder:text-slate-400"
-                    placeholder="e.g. smi829"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Password</label>
-                <input
-                    required
-                    type="password"
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-slate-900 placeholder:text-slate-400"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-
-              <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex justify-center items-center gap-2 mt-4"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> Access Dashboard</>}
-              </button>
-            </form>
-
-            <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-              <p className="text-sm text-slate-500">
-                New here? <Link
-                  href="/user-register" /* FIXED: Points exactly to your folder name */
-                  className="font-bold text-blue-600 hover:text-blue-800 hover:underline transition-all inline-flex items-center gap-1"
-              >
-                Create an account <ArrowRight size={14} />
-              </Link>
-              </p>
             </div>
 
-          </div>
-        </div>
+            {/* QUICK STATS ROW */}
+            <div className="bg-slate-900 rounded-2xl p-8 text-white flex flex-col md:flex-row justify-around items-center gap-8 shadow-2xl">
 
-        <div className="absolute bottom-4 text-center w-full text-xs text-slate-400">
-          &copy; 2026 Bentara Clinical Systems. All rights reserved.
+                <Link href="/dashboard/reviews" className="text-center group cursor-pointer">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1 group-hover:text-blue-400 transition-colors">Pending Reviews</p>
+                    <p className="text-4xl font-bold text-blue-400 group-hover:scale-110 transition-transform">{loading ? '-' : stats.pending_reports}</p>
+                </Link>
+
+                <div className="w-px h-12 bg-slate-700 hidden md:block"></div>
+
+                <div className="text-center">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Patients</p>
+                    <p className="text-4xl font-bold text-white">{loading ? '-' : stats.total_patients}</p>
+                </div>
+
+                <div className="w-px h-12 bg-slate-700 hidden md:block"></div>
+
+                <div className="text-center">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Critical Alerts</p>
+                    <p className="text-4xl font-bold text-red-500">{loading ? '-' : stats.critical_alerts}</p>
+                </div>
+            </div>
+
+            {/* NAVIGATION OPTIONS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+                <Link href="/dashboard/register" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-blue-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                            <UserPlus size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Register Patient</h3>
+                        <p className="text-sm text-slate-500 mb-4">Create a new patient record.</p>
+                        <span className="text-blue-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Start <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
+
+                <Link href="/dashboard/upload" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            <UploadCloud size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Upload Sample</h3>
+                        <p className="text-sm text-slate-500 mb-4">Run AI diagnostics on slides.</p>
+                        <span className="text-indigo-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Upload <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
+
+                <Link href="/dashboard/patients" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-emerald-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                            <Users size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Patient Directory</h3>
+                        <p className="text-sm text-slate-500 mb-4">View {stats.total_patients} registered records.</p>
+                        <span className="text-emerald-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Browse <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
+
+                <Link href="/dashboard/research" className="group bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-purple-300 transition-all cursor-pointer relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                            <Database size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Research Lab</h3>
+                        <p className="text-sm text-slate-500 mb-4">Contribute to the training dataset.</p>
+                        <span className="text-purple-600 text-sm font-bold flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Access <ArrowRight size={16}/>
+                </span>
+                    </div>
+                </Link>
+
+            </div>
+
         </div>
-      </div>
-  );
+    );
 }
