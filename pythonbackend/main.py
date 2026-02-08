@@ -16,7 +16,7 @@ from collections import Counter
 import datetime
 
 # --- IMPORT DATABASE CONNECTION ---
-# This imports the connection we created in database.py
+# This looks for the database.py file you created
 from database import engine, SessionLocal, Base
 
 app = FastAPI()
@@ -30,7 +30,7 @@ os.makedirs(os.path.join(DATASET_DIR, "images"), exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "labels"), exist_ok=True)
 
 # --- DATABASE MODELS (SQLAlchemy) ---
-# This tells Supabase exactly what columns to create
+# These define your tables in Supabase
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -64,14 +64,13 @@ class Report(Base):
     sample_type = Column(String)
     sample_date = Column(String)
     notes = Column(Text)
-    detections = Column(Text) # Stored as JSON string
+    detections = Column(Text) 
 
-# --- CREATE TABLES IN SUPABASE ---
-# This line checks if tables exist in Supabase, and creates them if they don't.
+# --- CREATE TABLES ---
+# This command connects to Supabase and builds the tables if they are missing
 Base.metadata.create_all(bind=engine)
 
-# --- DEPENDENCY ---
-# This helper function gives every endpoint a secure connection to Supabase
+# --- DB DEPENDENCY ---
 def get_db():
     db = SessionLocal()
     try:
@@ -154,7 +153,6 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 
 @app.post("/token")
 def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    # Check username OR email
     user = db.query(User).filter(
         ((User.username == username) | (User.email == username)) & (User.password == password)
     ).first()
@@ -169,7 +167,6 @@ def login(username: str = Form(...), password: str = Form(...), db: Session = De
 
 @app.post("/register")
 def register_user(user: RegisterRequest, db: Session = Depends(get_db)):
-    # Check if user exists
     existing = db.query(User).filter(User.username == user.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already taken")
@@ -222,10 +219,8 @@ def get_patient_details(patient_id: int, db: Session = Depends(get_db)):
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     
-    # Get reports for this patient
     reports = db.query(Report).filter(Report.patient_id == patient_id).all()
     
-    # Convert SQLAlchemy object to dictionary
     return {
         "id": patient.id,
         "name": patient.name,
@@ -255,18 +250,15 @@ async def upload_slide(
     assigned_to_id: str = Form(...), 
     db: Session = Depends(get_db)
 ):
-    # Verify consultant
     consultant = db.query(User).filter((User.username == assigned_to_id) | (User.license_id == assigned_to_id)).first()
     if not consultant:
         raise HTTPException(status_code=400, detail="Consultant not found")
 
-    # Save file
     filename = f"{uuid.uuid4()}.jpg"
     file_path = os.path.join(UPLOAD_DIR, filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Run YOLO Analysis
     detected_objects, class_names, highest_conf = [], [], 0.0
     for model in loaded_models:
         results = model(file_path)
@@ -289,7 +281,6 @@ async def upload_slide(
 
     diagnosis = Counter(class_names).most_common(1)[0][0] if class_names else "No Abnormalities Detected"
     
-    # Save Report to DB
     new_report = Report(
         patient_id=patient_id,
         image_url=f"/uploads/{filename}",
