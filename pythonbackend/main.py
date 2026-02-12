@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, relationship
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.sql import func
 import shutil
@@ -49,6 +49,9 @@ class Patient(Base):
     dob = Column(String)
     gender = Column(String)
     history = Column(Text)
+    
+    # FIX: Link back to reports
+    reports = relationship("Report", back_populates="patient")
 
 class Report(Base):
     __tablename__ = "reports"
@@ -64,6 +67,9 @@ class Report(Base):
     sample_date = Column(String)
     notes = Column(Text)
     detections = Column(Text)
+
+    # FIX: Link to Patient table
+    patient = relationship("Patient", back_populates="reports")
 
 class ResearchSample(Base):
     __tablename__ = "research_samples"
@@ -313,15 +319,10 @@ async def upload_slide(
 
 @app.get("/reports/pending")
 def get_pending_reports(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Fetch reports assigned to the current user with status 'Pending'"""
+    """Fetch ALL pending reports regardless of assignment"""
     
-    # Debug: If admin, show all pending (Optional helper)
-    if current_user.role == "Admin":
-         reports = db.query(Report).join(Patient).filter(Report.status == 'Pending').all()
-    else:
-         reports = db.query(Report).join(Patient).filter(
-             (Report.status == 'Pending') & (Report.assigned_to == current_user.username)
-         ).all()
+    # We use join(Patient) to prevent the "NoneType" error if a patient is missing
+    reports = db.query(Report).join(Patient).filter(Report.status == 'Pending').all()
 
     return [{
         "id": r.id, 
@@ -340,7 +341,8 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     
-    patient = db.query(Patient).filter(Patient.id == report.patient_id).first()
+    # Thanks to 'relationship', we don't need manual joins here
+    patient = report.patient
     consultant = db.query(User).filter(User.username == report.assigned_to).first()
     
     return {
@@ -365,9 +367,24 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
         }
     }
 
+# --- FIX FOR 404 ERROR: Added matching /signoff endpoint ---
+@app.put("/reports/{report_id}/signoff")
+def signoff_report(report_id: int, update: StatusUpdate = None, db: Session = Depends(get_db)):
+    """Authorize a report (Matching frontend /signoff request)"""
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    report.status = "Authorized"
+    if update and update.notes:
+        report.notes = (report.notes or "") + f"\n[Update]: {update.notes}"
+    
+    db.commit()
+    return {"message": "Report Authorized successfully", "new_status": report.status}
+
 @app.put("/reports/{report_id}/status")
 def update_report_status(report_id: int, update: StatusUpdate, db: Session = Depends(get_db)):
-    """Authorize or Reject a report"""
+    """Authorize or Reject a report (Generic status update)"""
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
