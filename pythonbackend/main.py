@@ -72,9 +72,12 @@ class Report(Base):
 class ResearchSample(Base):
     __tablename__ = "research_samples"
     id = Column(Integer, primary_key=True, index=True)
-    contributor_name = Column(String)
+    # FIX: Changed to contributor_id to match Frontend expectation
+    contributor_id = Column(Integer)  
     sample_type = Column(String)
     image_url = Column(String)
+    # FIX: Added annotations column which was missing
+    annotations = Column(Text) 
     notes = Column(Text)
     date = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String, default='Unverified')
@@ -91,7 +94,6 @@ def get_db():
         db.close()
 
 # --- YOLO CONFIG ---
-# (Models loading omitted for brevity, logic remains same)
 MODEL_FILES = ["eosinophil_best.pt", "lymphocyte_best.pt", "monocyte_best.pt", "neutrophil_best.pt", "blood_cell_best.pt"]
 loaded_models = []
 for model_file in MODEL_FILES:
@@ -356,10 +358,9 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
         }
     }
 
-# --- FIX FOR 405 ERROR: Allow BOTH POST and PUT ---
+# --- SIGN OFF ENDPOINT (POST/PUT) ---
 @app.api_route("/reports/{report_id}/signoff", methods=["POST", "PUT"])
 def signoff_report(report_id: int, update: StatusUpdate = None, db: Session = Depends(get_db)):
-    """Authorize a report (Accepts both POST and PUT to match frontend)"""
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -384,6 +385,8 @@ def update_report_status(report_id: int, update: StatusUpdate, db: Session = Dep
     db.commit()
     return {"message": "Status updated successfully", "new_status": report.status}
 
+# --- RESEARCH ENDPOINTS (Fixed for Schema Match) ---
+
 @app.post("/research/upload")
 async def upload_research_sample(
     file: UploadFile = File(...),
@@ -397,10 +400,12 @@ async def upload_research_sample(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
+    # FIX: Use current_user.id (Integer) and empty annotations
     new_sample = ResearchSample(
-        contributor_name=current_user.full_name,
+        contributor_id=current_user.id,
         sample_type=sample_type,
         image_url=f"/uploads/{filename}",
+        annotations="[]",
         notes=notes
     )
     db.add(new_sample)
