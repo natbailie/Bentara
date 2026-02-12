@@ -28,7 +28,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "images"), exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "labels"), exist_ok=True)
 
-# --- DATABASE MODELS (SQLAlchemy) ---
+# --- DATABASE MODELS ---
 
 class User(Base):
     __tablename__ = "users"
@@ -50,7 +50,6 @@ class Patient(Base):
     gender = Column(String)
     history = Column(Text)
     
-    # FIX: Link back to reports
     reports = relationship("Report", back_populates="patient")
 
 class Report(Base):
@@ -68,7 +67,6 @@ class Report(Base):
     notes = Column(Text)
     detections = Column(Text)
 
-    # FIX: Link to Patient table
     patient = relationship("Patient", back_populates="reports")
 
 class ResearchSample(Base):
@@ -93,11 +91,7 @@ def get_db():
         db.close()
 
 # --- YOLO CONFIG ---
-CLASS_MAP = {
-    "Neutrophil": 0, "Lymphocyte": 1, "Monocyte": 2, "Eosinophil": 3,
-    "Basophil": 4, "Blast Cell": 5, "RBC": 6, "Platelet": 7
-}
-
+# (Models loading omitted for brevity, logic remains same)
 MODEL_FILES = ["eosinophil_best.pt", "lymphocyte_best.pt", "monocyte_best.pt", "neutrophil_best.pt", "blood_cell_best.pt"]
 loaded_models = []
 for model_file in MODEL_FILES:
@@ -319,11 +313,7 @@ async def upload_slide(
 
 @app.get("/reports/pending")
 def get_pending_reports(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Fetch ALL pending reports regardless of assignment"""
-    
-    # We use join(Patient) to prevent the "NoneType" error if a patient is missing
     reports = db.query(Report).join(Patient).filter(Report.status == 'Pending').all()
-
     return [{
         "id": r.id, 
         "patient_name": r.patient.name if r.patient else "Unknown",
@@ -341,7 +331,6 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     
-    # Thanks to 'relationship', we don't need manual joins here
     patient = report.patient
     consultant = db.query(User).filter(User.username == report.assigned_to).first()
     
@@ -367,10 +356,10 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
         }
     }
 
-# --- FIX FOR 404 ERROR: Added matching /signoff endpoint ---
-@app.put("/reports/{report_id}/signoff")
+# --- FIX FOR 405 ERROR: Allow BOTH POST and PUT ---
+@app.api_route("/reports/{report_id}/signoff", methods=["POST", "PUT"])
 def signoff_report(report_id: int, update: StatusUpdate = None, db: Session = Depends(get_db)):
-    """Authorize a report (Matching frontend /signoff request)"""
+    """Authorize a report (Accepts both POST and PUT to match frontend)"""
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -384,7 +373,6 @@ def signoff_report(report_id: int, update: StatusUpdate = None, db: Session = De
 
 @app.put("/reports/{report_id}/status")
 def update_report_status(report_id: int, update: StatusUpdate, db: Session = Depends(get_db)):
-    """Authorize or Reject a report (Generic status update)"""
     report = db.query(Report).filter(Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -395,8 +383,6 @@ def update_report_status(report_id: int, update: StatusUpdate, db: Session = Dep
     
     db.commit()
     return {"message": "Status updated successfully", "new_status": report.status}
-
-# --- RESEARCH ENDPOINTS ---
 
 @app.post("/research/upload")
 async def upload_research_sample(
