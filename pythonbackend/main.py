@@ -24,9 +24,6 @@ app = FastAPI()
 UPLOAD_DIR = "/tmp/uploads"
 DATASET_DIR = "/tmp/dataset"
 
-# ⚡ BASE URL: Ensures images load correctly on Vercel
-BASE_URL = "https://natbailie-bentara-backend.hf.space"
-
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "images"), exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "labels"), exist_ok=True)
@@ -296,12 +293,12 @@ async def upload_slide(
 
     diagnosis = Counter(class_names).most_common(1)[0][0] if class_names else "No Abnormalities Detected"
     
-    # Save FULL Absolute URL for Reports
-    full_image_url = f"{BASE_URL}/uploads/{filename}"
+    # ⚡ FIX 1: Save relative path (Frontend adds the domain automatically)
+    image_url = f"/uploads/{filename}"
 
     new_report = Report(
         patient_id=patient_id,
-        image_url=full_image_url,
+        image_url=image_url,
         diagnosis=diagnosis,
         confidence=f"{int(highest_conf * 100)}%",
         assigned_to=consultant.username,
@@ -315,7 +312,7 @@ async def upload_slide(
     db.commit()
     db.refresh(new_report)
     
-    return {"report_id": new_report.id, "diagnosis": diagnosis, "image_url": full_image_url}
+    return {"report_id": new_report.id, "diagnosis": diagnosis, "image_url": image_url}
 
 @app.get("/reports/pending")
 def get_pending_reports(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -388,7 +385,7 @@ def update_report_status(report_id: int, update: StatusUpdate, db: Session = Dep
     db.commit()
     return {"message": "Status updated successfully", "new_status": report.status}
 
-# --- RESEARCH ENDPOINTS (Fixed Name: /research/gallery) ---
+# --- RESEARCH ENDPOINTS ---
 
 @app.post("/research/upload")
 async def upload_research_sample(
@@ -404,12 +401,13 @@ async def upload_research_sample(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    full_image_url = f"{BASE_URL}/uploads/{filename}"
+    # ⚡ FIX 1: Back to Relative URL (Prevents "Double URL" error)
+    image_url = f"/uploads/{filename}"
 
     new_sample = ResearchSample(
         contributor_id=current_user.id,
         sample_type=sample_type,
-        image_url=full_image_url,
+        image_url=image_url,
         annotations=annotations,
         notes=notes
     )
@@ -418,12 +416,10 @@ async def upload_research_sample(
     db.refresh(new_sample)
     return {"id": new_sample.id, "message": "Research sample stored in Supabase"}
 
-# ⚡ FIX: Renamed from /research/samples to /research/gallery to match Frontend
 @app.get("/research/gallery")
 def get_research_gallery(sample_type: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(ResearchSample)
     
-    # ⚡ FIX: Add filtering logic
     if sample_type:
         query = query.filter(ResearchSample.sample_type == sample_type)
         
@@ -434,7 +430,8 @@ def get_research_gallery(sample_type: Optional[str] = None, db: Session = Depend
         "contributor_id": s.contributor_id,
         "sample_type": s.sample_type,
         "image_url": s.image_url,
-        "annotations": json.loads(s.annotations) if s.annotations else [],
+        # ⚡ FIX 2: Do NOT parse JSON here. Send raw string. Frontend does the parsing.
+        "annotations": s.annotations if s.annotations else "[]",
         "notes": s.notes,
         "date": s.date,
         "status": s.status
