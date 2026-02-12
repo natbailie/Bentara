@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, status
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, status, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
@@ -65,7 +65,6 @@ class Report(Base):
     notes = Column(Text)
     detections = Column(Text)
 
-# --- NEW: RESEARCH SAMPLES TABLE ---
 class ResearchSample(Base):
     __tablename__ = "research_samples"
     id = Column(Integer, primary_key=True, index=True)
@@ -135,6 +134,10 @@ class PatientRequest(BaseModel):
     dob: str
     gender: str
     history: str = ""
+
+class StatusUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = ""
 
 # --- AUTH HELPER ---
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -308,6 +311,29 @@ async def upload_slide(
     
     return {"report_id": new_report.id, "diagnosis": diagnosis, "image_url": f"/uploads/{filename}"}
 
+@app.get("/reports/pending")
+def get_pending_reports(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Fetch reports assigned to the current user with status 'Pending'"""
+    
+    # Debug: If admin, show all pending (Optional helper)
+    if current_user.role == "Admin":
+         reports = db.query(Report).join(Patient).filter(Report.status == 'Pending').all()
+    else:
+         reports = db.query(Report).join(Patient).filter(
+             (Report.status == 'Pending') & (Report.assigned_to == current_user.username)
+         ).all()
+
+    return [{
+        "id": r.id, 
+        "patient_name": r.patient.name if r.patient else "Unknown",
+        "patient_mrn": r.patient.mrn if r.patient else "N/A",
+        "date": str(r.date), 
+        "diagnosis": r.diagnosis, 
+        "confidence": r.confidence, 
+        "assigned_to": r.assigned_to,
+        "image_url": r.image_url
+    } for r in reports]
+
 @app.get("/reports/{report_id}")
 def get_report(report_id: int, db: Session = Depends(get_db)):
     report = db.query(Report).filter(Report.id == report_id).first()
@@ -339,7 +365,21 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
         }
     }
 
-# --- NEW: RESEARCH ENDPOINTS ---
+@app.put("/reports/{report_id}/status")
+def update_report_status(report_id: int, update: StatusUpdate, db: Session = Depends(get_db)):
+    """Authorize or Reject a report"""
+    report = db.query(Report).filter(Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    report.status = update.status
+    if update.notes:
+        report.notes = (report.notes or "") + f"\n[Update]: {update.notes}"
+    
+    db.commit()
+    return {"message": "Status updated successfully", "new_status": report.status}
+
+# --- RESEARCH ENDPOINTS ---
 
 @app.post("/research/upload")
 async def upload_research_sample(
