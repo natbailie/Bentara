@@ -16,7 +16,6 @@ from collections import Counter
 import datetime
 
 # --- IMPORT DATABASE CONNECTION ---
-# This looks for the database.py file you created
 from database import engine, SessionLocal, Base
 
 app = FastAPI()
@@ -30,7 +29,7 @@ os.makedirs(os.path.join(DATASET_DIR, "images"), exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "labels"), exist_ok=True)
 
 # --- DATABASE MODELS (SQLAlchemy) ---
-# These define your tables in Supabase
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -64,10 +63,20 @@ class Report(Base):
     sample_type = Column(String)
     sample_date = Column(String)
     notes = Column(Text)
-    detections = Column(Text) 
+    detections = Column(Text)
+
+# --- NEW: RESEARCH SAMPLES TABLE ---
+class ResearchSample(Base):
+    __tablename__ = "research_samples"
+    id = Column(Integer, primary_key=True, index=True)
+    contributor_name = Column(String)
+    sample_type = Column(String)
+    image_url = Column(String)
+    notes = Column(Text)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+    status = Column(String, default='Unverified')
 
 # --- CREATE TABLES ---
-# This command connects to Supabase and builds the tables if they are missing
 Base.metadata.create_all(bind=engine)
 
 # --- DB DEPENDENCY ---
@@ -329,6 +338,36 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
             "role": consultant.role if consultant else "Clinician"
         }
     }
+
+# --- NEW: RESEARCH ENDPOINTS ---
+
+@app.post("/research/upload")
+async def upload_research_sample(
+    file: UploadFile = File(...),
+    notes: str = Form(""),
+    sample_type: str = Form("Unspecified"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    filename = f"research_{uuid.uuid4()}.jpg"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    new_sample = ResearchSample(
+        contributor_name=current_user.full_name,
+        sample_type=sample_type,
+        image_url=f"/uploads/{filename}",
+        notes=notes
+    )
+    db.add(new_sample)
+    db.commit()
+    db.refresh(new_sample)
+    return {"id": new_sample.id, "message": "Research sample stored in Supabase"}
+
+@app.get("/research/samples")
+def get_research_samples(db: Session = Depends(get_db)):
+    return db.query(ResearchSample).order_by(ResearchSample.id.desc()).all()
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
