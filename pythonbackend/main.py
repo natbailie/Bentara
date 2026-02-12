@@ -24,7 +24,7 @@ app = FastAPI()
 UPLOAD_DIR = "/tmp/uploads"
 DATASET_DIR = "/tmp/dataset"
 
-# ⚡ FIX 1: Define the Base URL for your Space so images load on Vercel
+# ⚡ BASE URL: Ensures images load correctly on Vercel
 BASE_URL = "https://natbailie-bentara-backend.hf.space"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -296,7 +296,7 @@ async def upload_slide(
 
     diagnosis = Counter(class_names).most_common(1)[0][0] if class_names else "No Abnormalities Detected"
     
-    # ⚡ FIX 2: Save FULL Absolute URL for Reports
+    # Save FULL Absolute URL for Reports
     full_image_url = f"{BASE_URL}/uploads/{filename}"
 
     new_report = Report(
@@ -388,14 +388,13 @@ def update_report_status(report_id: int, update: StatusUpdate, db: Session = Dep
     db.commit()
     return {"message": "Status updated successfully", "new_status": report.status}
 
-# --- RESEARCH ENDPOINTS ---
+# --- RESEARCH ENDPOINTS (Fixed Name: /research/gallery) ---
 
 @app.post("/research/upload")
 async def upload_research_sample(
     file: UploadFile = File(...),
     notes: str = Form(""),
     sample_type: str = Form("Unspecified"),
-    # ⚡ FIX 3: Accept annotations from form (even if optional)
     annotations: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -405,7 +404,6 @@ async def upload_research_sample(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # ⚡ FIX 4: Save FULL Absolute URL for Research Samples
     full_image_url = f"{BASE_URL}/uploads/{filename}"
 
     new_sample = ResearchSample(
@@ -420,12 +418,17 @@ async def upload_research_sample(
     db.refresh(new_sample)
     return {"id": new_sample.id, "message": "Research sample stored in Supabase"}
 
-@app.get("/research/samples")
-def get_research_samples(db: Session = Depends(get_db)):
-    samples = db.query(ResearchSample).order_by(ResearchSample.id.desc()).all()
+# ⚡ FIX: Renamed from /research/samples to /research/gallery to match Frontend
+@app.get("/research/gallery")
+def get_research_gallery(sample_type: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(ResearchSample)
     
-    # ⚡ FIX 5: Manually format response to parse JSON annotations
-    # This prevents the frontend from crashing if it expects a list but gets a string
+    # ⚡ FIX: Add filtering logic
+    if sample_type:
+        query = query.filter(ResearchSample.sample_type == sample_type)
+        
+    samples = query.order_by(ResearchSample.id.desc()).all()
+    
     return [{
         "id": s.id,
         "contributor_id": s.contributor_id,
