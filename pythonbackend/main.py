@@ -24,6 +24,9 @@ app = FastAPI()
 UPLOAD_DIR = "/tmp/uploads"
 DATASET_DIR = "/tmp/dataset"
 
+# ⚡ FIX 1: Define the Base URL for your Space so images load on Vercel
+BASE_URL = "https://natbailie-bentara-backend.hf.space"
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "images"), exist_ok=True)
 os.makedirs(os.path.join(DATASET_DIR, "labels"), exist_ok=True)
@@ -72,11 +75,9 @@ class Report(Base):
 class ResearchSample(Base):
     __tablename__ = "research_samples"
     id = Column(Integer, primary_key=True, index=True)
-    # FIX: Changed to contributor_id to match Frontend expectation
     contributor_id = Column(Integer)  
     sample_type = Column(String)
     image_url = Column(String)
-    # FIX: Added annotations column which was missing
     annotations = Column(Text) 
     notes = Column(Text)
     date = Column(DateTime(timezone=True), server_default=func.now())
@@ -295,9 +296,12 @@ async def upload_slide(
 
     diagnosis = Counter(class_names).most_common(1)[0][0] if class_names else "No Abnormalities Detected"
     
+    # ⚡ FIX 2: Save FULL Absolute URL for Reports
+    full_image_url = f"{BASE_URL}/uploads/{filename}"
+
     new_report = Report(
         patient_id=patient_id,
-        image_url=f"/uploads/{filename}",
+        image_url=full_image_url,
         diagnosis=diagnosis,
         confidence=f"{int(highest_conf * 100)}%",
         assigned_to=consultant.username,
@@ -311,7 +315,7 @@ async def upload_slide(
     db.commit()
     db.refresh(new_report)
     
-    return {"report_id": new_report.id, "diagnosis": diagnosis, "image_url": f"/uploads/{filename}"}
+    return {"report_id": new_report.id, "diagnosis": diagnosis, "image_url": full_image_url}
 
 @app.get("/reports/pending")
 def get_pending_reports(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -358,7 +362,6 @@ def get_report(report_id: int, db: Session = Depends(get_db)):
         }
     }
 
-# --- SIGN OFF ENDPOINT (POST/PUT) ---
 @app.api_route("/reports/{report_id}/signoff", methods=["POST", "PUT"])
 def signoff_report(report_id: int, update: StatusUpdate = None, db: Session = Depends(get_db)):
     report = db.query(Report).filter(Report.id == report_id).first()
@@ -385,13 +388,15 @@ def update_report_status(report_id: int, update: StatusUpdate, db: Session = Dep
     db.commit()
     return {"message": "Status updated successfully", "new_status": report.status}
 
-# --- RESEARCH ENDPOINTS (Fixed for Schema Match) ---
+# --- RESEARCH ENDPOINTS ---
 
 @app.post("/research/upload")
 async def upload_research_sample(
     file: UploadFile = File(...),
     notes: str = Form(""),
     sample_type: str = Form("Unspecified"),
+    # ⚡ FIX 3: Accept annotations from form (even if optional)
+    annotations: str = Form("[]"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -400,12 +405,14 @@ async def upload_research_sample(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # FIX: Use current_user.id (Integer) and empty annotations
+    # ⚡ FIX 4: Save FULL Absolute URL for Research Samples
+    full_image_url = f"{BASE_URL}/uploads/{filename}"
+
     new_sample = ResearchSample(
         contributor_id=current_user.id,
         sample_type=sample_type,
-        image_url=f"/uploads/{filename}",
-        annotations="[]",
+        image_url=full_image_url,
+        annotations=annotations,
         notes=notes
     )
     db.add(new_sample)
@@ -415,7 +422,20 @@ async def upload_research_sample(
 
 @app.get("/research/samples")
 def get_research_samples(db: Session = Depends(get_db)):
-    return db.query(ResearchSample).order_by(ResearchSample.id.desc()).all()
+    samples = db.query(ResearchSample).order_by(ResearchSample.id.desc()).all()
+    
+    # ⚡ FIX 5: Manually format response to parse JSON annotations
+    # This prevents the frontend from crashing if it expects a list but gets a string
+    return [{
+        "id": s.id,
+        "contributor_id": s.contributor_id,
+        "sample_type": s.sample_type,
+        "image_url": s.image_url,
+        "annotations": json.loads(s.annotations) if s.annotations else [],
+        "notes": s.notes,
+        "date": s.date,
+        "status": s.status
+    } for s in samples]
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
